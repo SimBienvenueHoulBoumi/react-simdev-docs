@@ -1,6 +1,12 @@
 // Pourquoi : moteur de style commutable — « tailwind » ou « mui ».
 // C'est l'adaptateur de la banque : les composants décident de leur
 // implémentation selon la valeur ici. Persisté dans localStorage.
+//
+// Note d'implémentation : l'état est lu via useSyncExternalStore, PAS
+// useState(readInitial) — pendant l'hydration React utiliserait l'état du
+// SSR ("tailwind") et ignorerait la valeur stockée (bug « le choix ne
+// persiste pas après rechargement »). useSyncExternalStore re-rend après
+// hydration quand la snapshot client diffère de celle du serveur.
 
 "use client";
 
@@ -8,15 +14,16 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
-  useMemo,
-  useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 
 export type StyleEngine = "tailwind" | "mui";
 
 const STORAGE_KEY = "foundry-engine";
+/** Événement local : notifie les abonnés du même onglet après setItem
+ *  (l'événement "storage" ne se déclenche pas dans la fenêtre qui écrit). */
+const CHANGE_EVENT = "foundry-engine-change";
 
 interface StyleEngineContextValue {
   engine: StyleEngine;
@@ -28,7 +35,7 @@ const StyleEngineContext = createContext<StyleEngineContextValue | null>(null);
 
 export { StyleEngineContext };
 
-function readInitial(): StyleEngine {
+function readStored(): StyleEngine {
   if (typeof window === "undefined") return "tailwind";
   try {
     const stored = window.localStorage.getItem(STORAGE_KEY);
@@ -39,42 +46,37 @@ function readInitial(): StyleEngine {
   return "tailwind";
 }
 
-export function StyleEngineProvider({ children }: { children: ReactNode }) {
-  const [engine, setEngineState] = useState<StyleEngine>(readInitial);
+function subscribe(onChange: () => void) {
+  window.addEventListener("storage", onChange);
+  window.addEventListener(CHANGE_EVENT, onChange);
+  return () => {
+    window.removeEventListener("storage", onChange);
+    window.removeEventListener(CHANGE_EVENT, onChange);
+  };
+}
 
-  // Synchronise après montage (si une autre fenêtre a changé la valeur)
-  useEffect(() => {
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === STORAGE_KEY && (e.newValue === "mui" || e.newValue === "tailwind")) {
-        setEngineState(e.newValue);
-      }
-    };
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
-  }, []);
+/** Le SSR rend toujours "tailwind" ; le client lira la vraie valeur et
+ *  useSyncExternalStore re-rendra si elle diffère (géré par React). */
+const SERVER_SNAPSHOT: StyleEngine = "tailwind";
+
+export function StyleEngineProvider({ children }: { children: ReactNode }) {
+  const engine = useSyncExternalStore(subscribe, readStored, () => SERVER_SNAPSHOT);
 
   const setEngine = useCallback((next: StyleEngine) => {
-    setEngineState(next);
     try {
       window.localStorage.setItem(STORAGE_KEY, next);
     } catch {
       /* stockage indisponible — la session garde la valeur */
     }
+    window.dispatchEvent(new Event(CHANGE_EVENT));
   }, []);
 
   const toggle = useCallback(() => {
-    setEngineState((prev) => {
-      const next = prev === "tailwind" ? "mui" : "tailwind";
-      try {
-        window.localStorage.setItem(STORAGE_KEY, next);
-      } catch {
-        /* ignoré */
-      }
-      return next;
-    });
-  }, []);
+    // la valeur courante est celle de la snapshot (engine du scope)
+    setEngine(engine === "mui" ? "tailwind" : "mui");
+  }, [engine, setEngine]);
 
-  const value = useMemo(() => ({ engine, setEngine, toggle }), [engine, setEngine, toggle]);
+  const value = { engine, setEngine, toggle };
 
   return <StyleEngineContext.Provider value={value}>{children}</StyleEngineContext.Provider>;
 }
