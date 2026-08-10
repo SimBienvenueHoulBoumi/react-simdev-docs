@@ -12,6 +12,7 @@ export interface ButtonProps<T extends ElementType = "button"> {
   variant?: "primary" | "secondary" | "outline" | "ghost" | "destructive";
   size?: "sm" | "md" | "lg" | "icon";
   isLoading?: boolean;
+  loadingLabel?: ReactNode;
   disabled?: boolean;
   className?: string;
   children?: ReactNode;

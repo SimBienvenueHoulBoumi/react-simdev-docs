@@ -15,6 +15,8 @@ export interface ButtonProps<T extends ElementType = "button"> {
   variant?: "primary" | "secondary" | "outline" | "ghost" | "destructive";
   size?: "sm" | "md" | "lg" | "icon";
   isLoading?: boolean;
+  /** Libellé pendant le chargement (« Enregistrement… ») */
+  loadingLabel?: ReactNode;
   disabled?: boolean;
   className?: string;
   children?: ReactNode;
@@ -41,6 +43,7 @@ export function Button<T extends ElementType = "button">({
   variant = "primary",
   size = "md",
   isLoading = false,
+  loadingLabel,
   className,
   children,
   disabled,
@@ -67,7 +70,7 @@ export function Button<T extends ElementType = "button">({
       }
       {...(rest as object)}
     >
-      {children}
+      {isLoading && loadingLabel ? loadingLabel : children}
     </Comp>
   );
 }

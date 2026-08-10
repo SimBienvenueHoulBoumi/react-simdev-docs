@@ -17,6 +17,9 @@ export interface ButtonProps<T extends ElementType = "button"> {
   size?: "sm" | "md" | "lg" | "icon";
   /** Affiche un spinner et désactive le bouton (anti double-clic) */
   isLoading?: boolean;
+  /** Libellé pendant le chargement (« Enregistrement… »). À défaut, le libellé
+   *  normal reste affiché — le spinner seul dit alors ce qui se passe. */
+  loadingLabel?: ReactNode;
   disabled?: boolean;
   className?: string;
   children?: ReactNode;
@@ -45,6 +48,7 @@ export function Button<T extends ElementType = "button">({
   variant = "primary",
   size = "md",
   isLoading = false,
+  loadingLabel,
   className,
   children,
   disabled,
@@ -73,7 +77,7 @@ export function Button<T extends ElementType = "button">({
           className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent"
         />
       )}
-      {children}
+      {isLoading && loadingLabel ? loadingLabel : children}
     </Comp>
   );
 }
