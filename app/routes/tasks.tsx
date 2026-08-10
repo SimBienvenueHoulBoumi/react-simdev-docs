@@ -124,10 +124,10 @@ function FiltersBar({ filters }: { filters: TaskFilters }) {
   return (
     <Form method="get" className="flex flex-wrap items-end gap-2">
       <Field label="Recherche">
-        <Input name="q" defaultValue={filters.search} placeholder="Filtrer par texte…" className="w-48" />
+        <Input name="q" defaultValue={filters.search} placeholder="Filtrer par texte…" className="max-w-48" />
       </Field>
       <Field label="Statut">
-        <Select name="status" defaultValue={filters.status} className="w-40">
+        <Select name="status" defaultValue={filters.status} className="max-w-40">
           <option value="">Tous</option>
           <option value="todo">À faire</option>
           <option value="in_progress">En cours</option>
@@ -135,7 +135,7 @@ function FiltersBar({ filters }: { filters: TaskFilters }) {
         </Select>
       </Field>
       <Field label="Priorité">
-        <Select name="priority" defaultValue={filters.priority} className="w-40">
+        <Select name="priority" defaultValue={filters.priority} className="max-w-40">
           <option value="">Toutes</option>
           <option value="low">Basse</option>
           <option value="medium">Moyenne</option>
@@ -167,7 +167,7 @@ function CreateForm({
         <Form method="post" className="flex flex-wrap items-start gap-2">
           <input type="hidden" name="intent" value="create" />
           <Field label="Titre" required error={fieldErrors?.title}>
-            <Input name="title" placeholder="Ex. : écrire la fiche useEffect" className="w-72" />
+            <Input name="title" placeholder="Ex. : écrire la fiche useEffect" className="max-w-72" />
           </Field>
           <Field label="Priorité">
             <Select name="priority" defaultValue="medium" className="w-36">
@@ -179,6 +179,7 @@ function CreateForm({
           <Button
             type="submit"
             isLoading={isSubmitting}
+            loadingLabel="Création…"
             onClick={() => {
               // l'action réussie déclenche le toast côté client (voir plus bas)
             }}
@@ -282,7 +283,12 @@ function DeleteButton({ task }: { task: Task }) {
           <Form method="post" onSubmit={() => toast("Tâche supprimée", { variant: "success" })}>
             <input type="hidden" name="intent" value="delete" />
             <input type="hidden" name="id" value={task.id} />
-            <Button type="submit" variant="destructive" isLoading={deleting}>
+            <Button
+              type="submit"
+              variant="destructive"
+              isLoading={deleting}
+              loadingLabel="Suppression…"
+            >
               Supprimer
             </Button>
           </Form>

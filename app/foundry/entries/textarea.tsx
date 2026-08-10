@@ -32,7 +32,7 @@ export const TextareaEntry: Entry = {
   sourceMui: textareaMuiSource,
   deps: ["lib/cn.ts"],
   uses: ["notion-forms", "notion-state"],
-  props: ["error", "rows", "value", "defaultValue", "ref"],
+  props: ["invalid", "rows", "value", "defaultValue", "ref"],
   Doc: TextareaDoc,
 };
 
@@ -42,18 +42,15 @@ export function TextareaDoc() {
       <Concept>
         <p>
           Le même composant qu'Input, en multiligne. Pas de logique propre : la
-          valeur, l'erreur et la validation restent vos affaires. Les lignes
+          valeur et la validation restent vos affaires ; l'état d'erreur arrive par{" "}
+          <code className="font-mono text-[13px]">invalid</code> et le message vient de Field. Les lignes
           s'agrandissent avec <code className="font-mono text-[13px]">min-h-20</code> par défaut.
         </p>
       </Concept>
 
       <Preview>
         <Textarea placeholder="Décrivez la tâche…" className="max-w-72" rows={3} />
-        <Textarea
-          defaultValue="avec erreur"
-          error="La description ne doit pas contenir le mot « error »"
-          className="max-w-72"
-        />
+        <Textarea defaultValue="En erreur" invalid className="max-w-72" />
       </Preview>
 
       <Code
@@ -62,7 +59,7 @@ export function TextareaDoc() {
   />
 
       <PropsTable rows={[
-        { name: "error", type: "string", default: "—", description: "Message affiché sous la zone ; passe le bord en rouge" },
+        { name: "invalid", type: "boolean", default: "false", description: "Bord destructif + aria-invalid. Le message est rendu par Field" },
         { name: "rows", type: "number", default: "—", description: "Hauteur initiale en lignes" },
         { name: "value / onChange", type: "string / fn", default: "—", description: "Mode contrôlé" },
         { name: "defaultValue", type: "string", default: "—", description: "Mode non contrôlé" },

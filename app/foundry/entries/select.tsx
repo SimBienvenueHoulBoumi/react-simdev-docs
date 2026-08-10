@@ -32,7 +32,7 @@ export const SelectEntry: Entry = {
   sourceMui: selectMuiSource,
   deps: ["lib/cn.ts"],
   uses: ["notion-forms", "notion-state", "notion-props"],
-  props: ["error", "placeholder", "value", "onValueChange", "children", "ref"],
+  props: ["invalid", "placeholder", "value", "onChange", "children", "ref"],
   Doc: SelectDoc,
 };
 
@@ -59,7 +59,7 @@ export function SelectDoc() {
           <option value="in_progress">En cours</option>
           <option value="done">Terminé</option>
         </Select>
-        <Select error="Choisissez une priorité" className="max-w-56" aria-label="Priorité">
+        <Select invalid className="max-w-56" aria-label="Priorité">
           <option value="">—</option>
           <option value="low">Basse</option>
           <option value="high">Haute</option>
@@ -72,7 +72,8 @@ export function SelectDoc() {
   />
 
       <PropsTable rows={[
-        { name: "error", type: "string", default: "—", description: "Message d'erreur sous le champ" },
+        { name: "invalid", type: "boolean", default: "false", description: "Bord destructif + aria-invalid. Le message est rendu par Field" },
+        { name: "className", type: "string", default: "—", description: "Appliqué à la RACINE (le wrapper), pas au <select> — sinon le chevron décroche" },
         { name: "placeholder", type: "string", default: "—", description: "Option grisée en tête, non sélectionnable" },
         { name: "value / onChange", type: "string / fn", default: "—", description: "Mode contrôlé" },
         { name: "children", type: "<option>…", default: "—", description: "Les options — c'est VOUS qui les construisez depuis vos données" },
@@ -98,7 +99,7 @@ export function SelectDoc() {
       <AdaptationAxes
         axes={[
           { title: "Conversion des données", description: "`data.map(o => <option key={o.id} value={o.value}>{o.label}</option>)` — la seule adaptation à faire." },
-          { title: "Largeur", description: "Le wrapper est `w-full` : bornez-le avec `className` (max-w-56 par ex.)." },
+          { title: "Largeur", description: "La racine est `w-full` et reçoit `className` : bornez-la avec `max-w-56` par ex. Le chevron suit, puisqu'il se positionne par rapport à elle." },
           { title: "Icône", description: "Le chevron est un SVG inline en absolu — changez-le sans toucher au DOM." },
         ]}
       />

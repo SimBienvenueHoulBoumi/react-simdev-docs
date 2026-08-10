@@ -1,4 +1,4 @@
-// Pourquoi : fiche Input — champ de saisie avec message d'erreur intégré.
+// Pourquoi : fiche Input — champ de saisie. Le message d'erreur appartient à <Field>.
 
 import type { Entry } from "../registry";
 import {
@@ -24,17 +24,17 @@ export const InputEntry: Entry = {
   title: "Input",
   family: "primitives",
   level: "base",
-  summary: "Champ de saisie simple, avec message d'erreur intégré. Logique contrôlée par vous.",
+  summary: "Champ de saisie simple. L'état d'erreur en prop, le message rendu par Field.",
   intents: [
     "saisir du texte dans un formulaire",
-    "montrer une erreur sous un champ",
+    "marquer un champ en erreur",
     "un champ de recherche",
   ],
   sourceTw: inputTwSource,
   sourceMui: inputMuiSource,
   deps: ["lib/cn.ts"],
   uses: ["notion-forms", "notion-state"],
-  props: ["error", "type", "placeholder", "value", "onChange", "disabled", "ref"],
+  props: ["invalid", "type", "placeholder", "value", "onChange", "disabled", "ref"],
   Doc: InputDoc,
 };
 
@@ -46,14 +46,18 @@ export function InputDoc() {
           Le champ de texte standard. Il ne fait que de l'affichage : la valeur et
           le <em>onChange</em> viennent de vous (contrôlé) — ou alors il est non
           contrôlé avec <code className="font-mono text-[13px]">defaultValue</code> et lu
-          à la soumission. L'erreur arrive en prop : le composant ne connaît pas votre validation.
+          à la soumission. Pour l'erreur, il ne porte que le visuel via{" "}
+          <code className="font-mono text-[13px]">invalid</code> : le message, son id et le
+          câblage <code className="font-mono text-[13px]">aria-describedby</code> appartiennent
+          à <a href="/foundry/field" className="text-primary underline underline-offset-2">Field</a>.
+          Un seul propriétaire, donc jamais deux messages pour une même erreur.
         </p>
       </Concept>
 
       <Preview>
         <Input placeholder="Nom de la tâche" className="max-w-56" />
         <Input defaultValue="Valeur contrôlée" className="max-w-56" />
-        <Input placeholder="Avec erreur" error="Ce champ est requis" className="max-w-56" />
+        <Input placeholder="En erreur" invalid className="max-w-56" />
         <Input placeholder="Désactivé" disabled className="max-w-56" />
         <Input type="search" placeholder="Recherche…" className="max-w-56" />
       </Preview>
@@ -64,11 +68,11 @@ export function InputDoc() {
   />
 
       <PropsTable rows={[
-        { name: "error", type: "string", default: "—", description: "Message affiché sous le champ ; passe le bord en rouge" },
+        { name: "invalid", type: "boolean", default: "false", description: "Bord destructif + aria-invalid. Le message est rendu par Field" },
         { name: "type", type: "string", default: "\"text\"", description: "Tout type natif : text, search, email, password…" },
         { name: "value / onChange", type: "string / fn", default: "—", description: "Mode contrôlé — la valeur vit dans votre état" },
         { name: "defaultValue", type: "string", default: "—", description: "Mode non contrôlé — valeur initiale seule" },
-        { name: "className", type: "string", default: "—", description: "Fusionné après les styles de base" },
+        { name: "className", type: "string", default: "—", description: "Appliqué à la racine — ici l'input lui-même (pas de wrapper)" },
         { name: "ref", type: "Ref<HTMLInputElement>", default: "—", description: "React 19 : ref en prop directe" },
       ]} />
 
@@ -90,7 +94,7 @@ export function InputDoc() {
       <AdaptationAxes
         axes={[
           { title: "Style", description: "Modifiez les classes de base du `cn(...)` : hauteur, rayon, épaisseur de bord." },
-          { title: "Erreur", description: "Le pattern `error ? … : …` du bord est copiable tel quel pour d'autres champs." },
+          { title: "Erreur", description: "Le pattern `invalid && …` du bord est copiable tel quel pour d'autres champs." },
           { title: "Icône", description: "Enveloppez le composant dans un conteneur relatif et ajoutez l'icône en absolu." },
         ]}
       />
@@ -106,8 +110,8 @@ export function InputDoc() {
         placeholder="Votre nom"
       />
       <Input
-        placeholder="Saisie non contrôlée"
-        error={value.length === 0 ? "" : undefined}
+        placeholder="Non vide, sinon en erreur"
+        invalid={value.length === 0}
       />
       <p className="text-xs text-muted-foreground">
         Contrôlé : {value || "…"}
@@ -124,13 +128,14 @@ return <Demo />;`}
         items={[
           { symptom: "Le champ ne réagit pas à la frappe", cause: "`value` sans `onChange` : le champ est contrôlé mais l'état ne bouge jamais." },
           { symptom: "Erreur qui ne disparaît pas", cause: "Erreur passée depuis le serveur : effacez-la dès que l'utilisateur tape (onChange)." },
+          { symptom: "Un message d'erreur s'affiche en double", cause: "Vous passez l'erreur au champ ET à Field. Le message appartient à Field ; le champ ne reçoit que `invalid`." },
         ]}
       />
 
       <Facts
         facts={[
           { label: "Prérequis", value: "TW : React 19 · Tailwind 4 · lib/cn.ts — MUI : React 19 · @mui/material" },
-          { label: "Accessibilité", value: "aria-invalid sur erreur, focus visible. Le label reste à votre charge (voir Field)." },
+          { label: "Accessibilité", value: "aria-invalid sur invalid, focus visible. Label, message et aria-describedby viennent de Field." },
           { label: "Poids", value: "~35 lignes, zéro dépendance" },
         ]}
       />

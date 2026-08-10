@@ -13,7 +13,6 @@ import {
   WhenToUse,
 } from "../sheet";
 import fieldSource from "~/components/patterns/field.tsx?raw";
-import cnSource from "~/lib/cn.ts?raw";
 import { Field } from "~/components/patterns/field";
 import { Input } from "~/components/ui/input";
 import { Select } from "~/components/ui/select";
@@ -32,7 +31,7 @@ export const FieldEntry: Entry = {
     "homogénéiser les formulaires",
   ],
   source: fieldSource,
-  deps: ["lib/cn.ts"],
+  deps: [],
   uses: ["notion-forms"],
   props: ["label", "hint", "error", "required", "children"],
   Doc: FieldDoc,
@@ -65,14 +64,14 @@ function FieldDoc() {
         </div>
       </Preview>
 
-      <Code source={fieldSource} filename="components/patterns/field.tsx" depsCode={[cnSource]} depsNames={["lib/cn.ts"]} />
+      <Code source={fieldSource} filename="components/patterns/field.tsx" />
 
       <PropsTable rows={[
-        { name: "label", type: "string", default: "—", description: "Le texte du label — sert aussi à générer l'id" },
+        { name: "label", type: "string", default: "—", description: "Le texte du label, relié au champ par htmlFor" },
         { name: "hint", type: "string", default: "—", description: "Aide affichée quand pas d'erreur" },
         { name: "error", type: "string", default: "—", description: "Message d'erreur — remplace l'aide" },
         { name: "required", type: "boolean", default: "false", description: "Affiche l'astérisque" },
-        { name: "children", type: "ReactElement", default: "—", description: "LE champ (Input, Select…) — clone avec id/error" },
+        { name: "children", type: "ReactElement", default: "—", description: "LE champ (Input, Select…) — cloné avec id, invalid et le câblage aria" },
       ]} />
 
       <WhenToUse
@@ -92,7 +91,7 @@ function FieldDoc() {
 
       <AdaptationAxes
         axes={[
-          { title: "Génération de l'id", description: "Sluggé depuis le label — deux fields au même label = deux ids identiques, évitez les libellés dupliqués." },
+          { title: "Génération de l'id", description: "`useId()` : unique par instance, donc deux champs au même libellé ne se marchent plus dessus. Un id posé par vous est respecté." },
           { title: "Contenu du message", description: "L'erreur passe en prop depuis VOTRE validation ou le fieldErrors serveur." },
           { title: "defaultValue", description: "Passez defaultValue directement au champ enfant — Field ne le pirate pas." },
         ]}
@@ -130,16 +129,17 @@ return <Demo />;`}
 
       <Pitfalls
         items={[
-          { symptom: "Le clic sur le label ne focus pas le champ", cause: "Le champ enfant a déjà un id : Field clone avec son id — vérifiez qu'aucun id dupliqué n'existe." },
+          { symptom: "Le clic sur le label ne focus pas le champ", cause: "L'enfant n'est pas un élément React unique (fragment, tableau, texte) : Field ne peut alors rien cloner. Passez un seul champ." },
+          { symptom: "Le message d'erreur s'affiche deux fois", cause: "Vous passez l'erreur à Field ET au champ. Field est le seul propriétaire du message ; le champ ne reçoit que `invalid`." },
           { symptom: "L'erreur du serveur ne disparaît pas quand on corrige", cause: "Effacez fieldErrors dans l'action dès qu'un champ change, ou passez undefined en onChange." },
         ]}
       />
 
       <Facts
         facts={[
-          { label: "Prérequis", value: "React 19 · Tailwind 4 · lib/cn.ts" },
-          { label: "Accessibilité", value: "label htmlFor auto, aria-describedby vers hint/erreur, role=alert sur l'erreur." },
-          { label: "Poids", value: "~55 lignes, zéro dépendance" },
+          { label: "Prérequis", value: "React 19 · Tailwind 4 — aucune dépendance, pas même cn()" },
+          { label: "Accessibilité", value: "label htmlFor auto, aria-describedby vers l'aide ou l'erreur, aria-required quand required, role=alert sur l'erreur." },
+          { label: "Poids", value: "~60 lignes, zéro dépendance" },
         ]}
       />
     </>
