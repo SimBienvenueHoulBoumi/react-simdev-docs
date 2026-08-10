@@ -6,6 +6,7 @@ import { useEffect } from "react";
 import { Link, useOutletContext, useParams } from "react-router";
 import { entryBySlug, entries, FAMILY_LABELS, LEVEL_LABELS } from "~/foundry/registry";
 import { Badge } from "~/components/ui/badge";
+import type { TocItem } from "~/components/layout/table-of-contents";
 import type { FoundryOutletContext } from "./layout";
 
 export function meta({ params }: { params: { slug?: string } }) {
@@ -24,19 +25,57 @@ export default function FoundryEntryPage() {
   const { setToc } = useOutletContext<FoundryOutletContext>();
   const entry = entryBySlug.get(slug ?? "");
 
-  // Sommaire : la fiche expose ses h2/h3 tels quels (attendu : id="..." présent)
+  // Sommaire VIVANT : la fiche expose ses h2/h3 (id="..." attendu) et, pour ce
+  // qui n'est pas un titre, tout élément portant `data-toc` + `id` — par exemple
+  // les onglets d'expériences du banc.
+  //
+  // Pourquoi un MutationObserver et non un scan unique : le banc est replié par
+  // défaut ET chargé paresseusement, donc ses ancres n'existent pas au montage.
+  // Avec l'ancien scan unique elles n'entraient JAMAIS dans le sommaire.
   useEffect(() => {
     if (!entry) return;
-    const headers = Array.from(
-      document.querySelectorAll("main h2[id], main h3[id]"),
-    );
-    const items = headers.map((h) => ({
-      id: h.id,
-      label: h.textContent ?? "",
-      level: (h.tagName === "H2" ? 2 : 3) as 2 | 3,
-    }));
-    setToc(items);
-    return () => setToc([]);
+    const main = document.querySelector("main");
+    if (!main) return;
+
+    let frame = 0;
+    let signature = "";
+
+    const scan = () => {
+      const nodes = Array.from(
+        main.querySelectorAll<HTMLElement>("h2[id], h3[id], [data-toc][id]"),
+      );
+      const items: TocItem[] = nodes.map((el) => ({
+        id: el.id,
+        label: el.dataset.toc ?? el.textContent ?? "",
+        level: el.dataset.toc ? 3 : el.tagName === "H2" ? 2 : 3,
+      }));
+
+      // Garde-fou obligatoire : setToc → re-rendu → mutation → setToc…
+      // Sans cette comparaison, la boucle ne s'arrête jamais.
+      const next = items.map((i) => `${i.level}|${i.id}|${i.label}`).join("\n");
+      if (next === signature) return;
+      signature = next;
+      setToc(items);
+    };
+
+    scan();
+    const observer = new MutationObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(scan);
+    });
+    observer.observe(main, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: ["id", "data-toc"],
+    });
+
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(frame);
+      setToc([]);
+    };
   }, [entry, setToc]);
 
   if (!entry) {

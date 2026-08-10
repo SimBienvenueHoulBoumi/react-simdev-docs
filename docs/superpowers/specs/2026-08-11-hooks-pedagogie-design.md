@@ -214,7 +214,7 @@ Le sommaire est un **instantané pris au montage** (`$slug.tsx`, un `querySelect
 **`tests/hook-tracker.test.tsx`** (adapté — la forme du `snapshot()` change)
 - Les passes sont numérotées à partir de 1
 - Le déclencheur est enregistré ; `null` au montage
-- `changed` est vrai au premier échantillon d'une valeur nouvelle, faux si identique à la passe précédente
+- `changed` est **faux à la passe 1** (au montage rien n'a changé : tout naît) ; à partir de la passe 2, vrai si la valeur diffère de la même position à la passe précédente, ou si cette position n'existait pas
 - **La fusion de la re-passe StrictMode reste verte** (test existant conservé)
 - `reset()` vide et notifie ; `getSnapshot` change à chaque échantillon
 - `HookMonitor` rend les passes, affiche « inchangé », et retombe sur les index sans noms
@@ -231,6 +231,24 @@ Le sommaire est un **instantané pris au montage** (`$slug.tsx`, un `querySelect
 - Un `[data-toc][id]` est indexé au niveau 3
 - Pas de boucle : deux scans identiques n'appellent `setToc` qu'une fois
 
-## 9. Critère de réussite
+## 9. Correctif annexe — décalage du bascule Tailwind / MUI
+
+Signalé pendant l'implémentation, corrigé dans la foulée car il touche le même fichier (`app/foundry/sheet.tsx`).
+
+Le bloc `Code` mémorise un onglet « forcé » (`forced`) qui prime sur le moteur global, et le remettait à `null` dans un `useEffect` dépendant de `engine`. Conséquence : au basculement global, le **premier rendu affichait encore l'ancienne variante** et seul le rendu suivant corrigeait — un décalage d'une frame parfaitement visible.
+
+Correctif : l'ajustement se fait **pendant le rendu**, patron React officiel « ajuster l'état quand une prop change ».
+
+```tsx
+const [lastEngine, setLastEngine] = useState(engine);
+if (engine !== lastEngine) {
+  setLastEngine(engine);
+  setForced(null);
+}
+```
+
+React relance alors le rendu immédiatement, avant le commit : aucune frame intermédiaire n'est peinte. Le `useEffect` est supprimé.
+
+## 10. Critère de réussite
 
 Un lecteur ouvre `notion-hooks`, déplie le banc, clique « Le rendu », exécute — et voit dans le pied que `c` est passé de 0 à 1 sous l'effet de `setC`, tandis que `n` n'apparaît nulle part. Il comprend en une lecture pourquoi `n` ne s'affiche pas.

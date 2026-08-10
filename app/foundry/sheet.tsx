@@ -2,8 +2,8 @@
 // Chaque fiche compose ces blocs dans le même ordre : concept, aperçu, code,
 // contrat, quand l'utiliser, axes d'adaptation, banc d'essai, pièges, prérequis, a11y.
 
-import { type ReactNode, useEffect, useState } from "react";
-import { Bench } from "~/components/layout/bench";
+import { type ReactNode, useState } from "react";
+import { Bench, type BenchExperiment } from "~/components/layout/bench";
 import { CodeBlock } from "~/components/layout/code-block";
 import { useStyleEngine } from "~/lib/style-engine";
 
@@ -44,8 +44,18 @@ export function Code({
 
   // null = suit le moteur global ; sinon choix explicite de l'utilisateur
   const [forced, setForced] = useState<"tailwind" | "mui" | null>(null);
-  // resynchronise le défaut quand le moteur change et qu'aucun onglet n'est forcé
-  useEffect(() => setForced(null), [engine]);
+
+  // Resynchronise le défaut quand le moteur global change. L'ajustement se
+  // fait PENDANT le rendu, pas dans un useEffect : avec un effet, le premier
+  // rendu après le basculement affichait encore l'ancienne variante et seul
+  // le rendu suivant corrigeait — un décalage d'une frame bien visible.
+  // React relance le rendu immédiatement, avant le commit (patron officiel
+  // « ajuster l'état quand une prop change »).
+  const [lastEngine, setLastEngine] = useState(engine);
+  if (engine !== lastEngine) {
+    setLastEngine(engine);
+    setForced(null);
+  }
 
   const active: "tailwind" | "mui" = forced ?? engine;
   const variant: CodeVariant | undefined = dual ? (active === "mui" ? mui : tw) : undefined;
@@ -289,14 +299,19 @@ export function BenchSection({
   code,
   data,
   scope,
+  experiments,
 }: {
   code: string;
   data: string;
   scope: Record<string, unknown>;
+  /** Expériences commutables : chacune isole UN mécanisme (design §3.2).
+   *  Une seule ancre `#banc-essai` → le sommaire reste intact ; chaque
+   *  expérience ajoute sa propre sous-ancre `#banc-<id>`. */
+  experiments?: BenchExperiment[];
 }) {
   return (
     <SheetSection id="banc-essai" title="Banc d'essai">
-      <Bench code={code} data={data} scope={scope} />
+      <Bench code={code} data={data} scope={scope} experiments={experiments} />
     </SheetSection>
   );
 }

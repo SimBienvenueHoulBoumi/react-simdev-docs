@@ -1,11 +1,20 @@
 // Pourquoi : panneau interne du banc d'essai (chargé à la demande, client-only).
-// — Code (JSX) éditable dans un textarea monospace (pas de coloration, hors v1)
-// — Données (JSON) éditable
-// — Rendu live à l'exécution (⌘↵ / bouton)
-// — Console : console.log capturés + erreurs de compile/run avec message exact
-// — État des hooks : chaque hook use*** du code échantillonne ses valeurs
-//   successives (useState, useReducer, useMemo…) — voir Tracker
-// — Error boundary réinitialisée à chaque exécution (spec §7)
+// Mise en page B — grammaire CodePen : on écrit en haut, on voit en bas.
+//
+//   ┌──────────────────────────────────────────────┐
+//   │ [expériences]            ● état  ▶ ⌘↵  ↺  ⤢ │  barre d'outils
+//   ├───────────────────────┬──────────────────────┤
+//   │ Code (+ gouttière)    │ Données (JSON)       │
+//   ├───────────────────────┴──────────────────────┤
+//   │ ▬▬▬ poignée ▬▬▬                              │
+//   │            SCÈNE — pleine largeur            │
+//   ├──────────────────────────────────────────────┤
+//   │ [Hooks n][Console n]  chronologie dépliée    │
+//   └──────────────────────────────────────────────┘
+//
+// Le contrat d'exécution (expression vs programme, injection de `data`,
+// ToastProvider, error boundary remontée à chaque run) est INCHANGÉ — il est
+// verrouillé par tests/bench-contract.test.ts (spec §7).
 
 "use client";
 
@@ -14,6 +23,7 @@ import {
   Fragment,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -21,11 +31,32 @@ import {
   type ReactNode,
 } from "react";
 import { transform } from "sucrase";
+import { cn } from "~/lib/cn";
+import {
+  EMPTY_NAMING,
+  extractHookNames,
+  type HookNaming,
+} from "./bench-hook-names";
+
+/** Une expérience du banc : un mécanisme isolé, sa thèse, son code. */
+export interface BenchExperiment {
+  /** Identifiant d'ancre — l'URL `#banc-<id>` sélectionne cette expérience */
+  id: string;
+  label: string;
+  /** La phrase que l'expérience démontre, affichée au-dessus du code */
+  thesis: string;
+  code: string;
+  data?: string;
+}
 
 export interface BenchPanelProps {
   code: string;
   data: string;
   scope: Record<string, unknown>;
+  experiments?: BenchExperiment[];
+  activeId?: string;
+  onSelect?: (id: string) => void;
+  thesis?: string;
 }
 
 interface LogEntry {
@@ -33,13 +64,34 @@ interface LogEntry {
   args: unknown[];
 }
 
-export default function BenchPanel({ code, data, scope }: BenchPanelProps) {
+/** Trois états honnêtes : le rendu correspond-il au code affiché ? */
+type RunStatus = "vierge" | "modifie" | "erreur" | "ajour";
+
+const STAGE_KEY = "foundry-bench-stage";
+const STAGE_MIN = 160;
+const STAGE_DEFAULT = 288;
+
+export default function BenchPanel({
+  code,
+  data,
+  scope,
+  experiments,
+  activeId,
+  onSelect,
+  thesis,
+}: BenchPanelProps) {
   const [codeValue, setCodeValue] = useState(code);
   const [dataValue, setDataValue] = useState(data);
   const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [execution, setExecution] = useState<{ key: number; error?: string } | null>(null);
+  const [execution, setExecution] = useState<{ key: number } | null>(null);
+  /** Instantané du code au moment du dernier run — sert à détecter « modifié ». */
+  const [ranWith, setRanWith] = useState<{ code: string; data: string } | null>(null);
+  const [tab, setTab] = useState<"hooks" | "console">("hooks");
+
   const codeRef = useRef<HTMLTextAreaElement>(null);
-  const dataRef = useRef<HTMLTextAreaElement>(null);
+  const gutterRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+
   // Traqueur des hooks use*** — vit pendant toute la session du banc et
   // se vide à chaque exécution (comme la console et la boundary).
   const trackerRef = useRef<Tracker | null>(null);
@@ -49,9 +101,11 @@ export default function BenchPanel({ code, data, scope }: BenchPanelProps) {
   const run = useCallback(() => {
     setLogs([]);
     tracker.reset();
+    tracker.setNaming(extractHookNames(codeValue));
+    setRanWith({ code: codeValue, data: dataValue });
     // Nouvelle clé → le RenderedView est remonté → erreurs de la run précédente purgées
     setExecution({ key: Date.now() });
-  }, [tracker]);
+  }, [tracker, codeValue, dataValue]);
 
   // Exécuter au clic, ⌘↵ ou Ctrl+↵
   useEffect(() => {
@@ -67,108 +121,407 @@ export default function BenchPanel({ code, data, scope }: BenchPanelProps) {
     setDataValue(data);
     setLogs([]);
     tracker.reset();
+    setRanWith(null);
     setExecution(null);
   };
 
+  const errorCount = logs.filter((l) => l.type === "error").length;
+
+  // Une erreur doit se voir : rester sur un tracé de hooks muet pendant que la
+  // console porte le message exact est le pire des deux mondes.
+  useEffect(() => {
+    if (errorCount > 0) setTab("console");
+  }, [errorCount]);
+
+  const status: RunStatus = !execution
+    ? "vierge"
+    : ranWith && (ranWith.code !== codeValue || ranWith.data !== dataValue)
+      ? "modifie"
+      : errorCount > 0
+        ? "erreur"
+        : "ajour";
+
+  const dataState = useMemo(() => checkJson(dataValue), [dataValue]);
+
   return (
-    <div className="grid gap-0 border-t border-border lg:grid-cols-2">
-      {/* Colonne gauche : code + données */}
-      <div className="flex flex-col border-b border-border lg:border-b-0 lg:border-r">
-        <div className="border-b border-border">
-          <div className="flex items-center justify-between px-3 py-1.5">
-            <span className="text-xs font-medium text-muted-foreground">Code (JSX)</span>
+    <div ref={rootRef} className="flex flex-col bg-background">
+      <Toolbar
+        experiments={experiments}
+        activeId={activeId}
+        onSelect={onSelect}
+        status={status}
+        onRun={run}
+        onReset={reset}
+        rootRef={rootRef}
+      />
+
+      {thesis && (
+        <p className="border-t border-border bg-primary/5 px-3 py-2 text-sm text-foreground">
+          {thesis}
+        </p>
+      )}
+
+      {/* ——— Atelier : code | données ——— */}
+      <div className="grid border-t border-border md:grid-cols-2">
+        <div className="flex flex-col border-b border-border md:border-b-0 md:border-r">
+          <PaneHeader label="Code (JSX)">
             <span className="text-[10px] text-muted-foreground">JSX + TS supporté</span>
+          </PaneHeader>
+          <div className="relative flex h-48">
+            <div
+              ref={gutterRef}
+              aria-hidden="true"
+              className="select-none overflow-hidden bg-muted/30 py-3 pl-3 pr-2 text-right font-mono text-[13px] leading-relaxed text-muted-foreground/50"
+            >
+              {codeValue.split("\n").map((_, i) => (
+                <div key={i}>{i + 1}</div>
+              ))}
+            </div>
+            <textarea
+              ref={codeRef}
+              value={codeValue}
+              onChange={(e) => setCodeValue(e.target.value)}
+              onScroll={(e) => {
+                if (gutterRef.current) gutterRef.current.scrollTop = e.currentTarget.scrollTop;
+              }}
+              spellCheck={false}
+              // Sans wrap="off", une ligne source longue occupe deux lignes à
+              // l'écran et la gouttière se décale : les numéros désignent alors
+              // la mauvaise ligne. Défilement horizontal, comme tout éditeur.
+              wrap="off"
+              aria-label="Code JSX du banc d'essai"
+              className="code-scroll h-full flex-1 resize-none overflow-auto bg-background p-3 font-mono text-[13px] leading-relaxed outline-none"
+            />
           </div>
-          <textarea
-            ref={codeRef}
-            value={codeValue}
-            onChange={(e) => setCodeValue(e.target.value)}
-            spellCheck={false}
-            aria-label="Code JSX du banc d'essai"
-            className="code-scroll h-44 w-full resize-y bg-background p-3 font-mono text-[13px] leading-relaxed outline-none"
-          />
         </div>
-        <div>
-          <div className="flex items-center justify-between px-3 py-1.5">
-            <span className="text-xs font-medium text-muted-foreground">
-              Données (JSON) — remplacez par VOS données
+
+        <div className="flex flex-col">
+          <PaneHeader label="Données (JSON) — remplacez par VOS données">
+            <span
+              className={cn(
+                "max-w-[14rem] truncate text-[10px]",
+                dataState.ok ? "text-emerald-600 dark:text-emerald-400" : "text-destructive",
+              )}
+            >
+              {dataState.ok ? `✓ ${dataState.label}` : `✗ ${dataState.label}`}
             </span>
-          </div>
+          </PaneHeader>
           <textarea
-            ref={dataRef}
             value={dataValue}
             onChange={(e) => setDataValue(e.target.value)}
             spellCheck={false}
             aria-label="Données JSON du banc d'essai"
-            className="code-scroll h-36 w-full resize-y bg-background p-3 font-mono text-[13px] leading-relaxed outline-none"
+            className="code-scroll h-48 w-full resize-none bg-background p-3 font-mono text-[13px] leading-relaxed outline-none"
           />
         </div>
       </div>
 
-      {/* Colonne droite : rendu + console */}
-      <div className="flex flex-col">
-        <div className="flex items-center justify-between border-b border-border px-3 py-1.5">
-          <span className="text-xs font-medium text-muted-foreground">Rendu</span>
-          <div className="flex gap-1.5">
+      <Stage
+        status={status}
+        onRun={run}
+        execution={execution}
+        codeValue={codeValue}
+        dataValue={dataValue}
+        scope={scope}
+        tracker={tracker}
+        onLog={(type, args) => setLogs((prev) => [...prev, { type, args }])}
+      />
+
+      {/* ——— Inspecteur : hooks | console ——— */}
+      <div className="border-t border-border bg-muted/20">
+        <div role="tablist" aria-label="Inspecteur" className="flex items-center gap-1 px-3 pt-2">
+          <InspectorTab active={tab === "hooks"} onClick={() => setTab("hooks")}>
+            Hooks <HookCount tracker={tracker} />
+          </InspectorTab>
+          <InspectorTab active={tab === "console"} onClick={() => setTab("console")}>
+            Console{" "}
+            {logs.length > 0 && (
+              <span className={cn("ml-1", errorCount > 0 && "text-destructive")}>
+                {logs.length}
+              </span>
+            )}
+          </InspectorTab>
+          {tab === "console" && logs.length > 0 && (
             <button
-              onClick={run}
-              className="rounded border border-border bg-background px-2 py-1 text-xs font-medium hover:bg-accent"
+              onClick={() => setLogs([])}
+              className="ml-auto text-[10px] text-muted-foreground underline hover:text-foreground"
             >
-              Exécuter <kbd className="ml-1 text-[10px] text-muted-foreground">⌘↵</kbd>
+              effacer
             </button>
-            <button
-              onClick={reset}
-              className="rounded border border-border bg-background px-2 py-1 text-xs font-medium hover:bg-accent"
-            >
-              Réinit.
-            </button>
-          </div>
-        </div>
-        <div className="flex min-h-40 flex-1 flex-col gap-2 p-3">
-          {execution && (
-            <RenderedView
-              key={execution.key}
-              code={codeValue}
-              data={dataValue}
-              scope={scope}
-              tracker={tracker}
-              onLog={(type, args) => setLogs((prev) => [...prev, { type, args }])}
-              onError={(message) =>
-                setLogs((prev) => [...prev, { type: "error", args: [message] }])
-              }
-            />
           )}
         </div>
-        <HookMonitor tracker={tracker} />
-        <div className="border-t border-border">
-          <div className="flex items-center justify-between px-3 py-1.5">
-            <span className="text-xs font-medium text-muted-foreground">
-              Console {logs.length > 0 && <span className="ml-1 text-[10px]">({logs.length})</span>}
-            </span>
-            {logs.length > 0 && (
-              <button
-                onClick={() => setLogs([])}
-                className="text-[10px] text-muted-foreground underline hover:text-foreground"
-              >
-                effacer
-              </button>
-            )}
-          </div>
-          <div className="code-scroll h-24 overflow-y-auto bg-background px-3 py-2 font-mono text-xs">
+        {tab === "hooks" ? (
+          <HookMonitor tracker={tracker} />
+        ) : (
+          <div className="code-scroll h-28 overflow-y-auto px-3 py-2 font-mono text-xs">
             {logs.length === 0 && (
               <p className="text-muted-foreground/60">console.log capturé ici…</p>
             )}
             {logs.map((l, i) => (
-              <p key={i} className={`py-0.5 ${l.type === "error" ? "text-destructive" : l.type === "warn" ? "text-amber-500" : ""}`}>
+              <p
+                key={i}
+                className={cn(
+                  "py-0.5",
+                  l.type === "error" && "text-destructive",
+                  l.type === "warn" && "text-amber-500",
+                )}
+              >
                 {l.type === "error" ? "✗ " : l.type === "warn" ? "⚠ " : "› "}
                 {formatArgs(l.args)}
               </p>
             ))}
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
+}
+
+/* ——— Barre d'outils ——— */
+
+const STATUS_LABEL: Record<RunStatus, string> = {
+  vierge: "jamais exécuté",
+  modifie: "modifié — non exécuté",
+  erreur: "erreur à la dernière exécution",
+  ajour: "à jour",
+};
+
+const STATUS_TONE: Record<RunStatus, string> = {
+  vierge: "text-muted-foreground",
+  modifie: "text-amber-600 dark:text-amber-400",
+  erreur: "text-destructive",
+  ajour: "text-emerald-600 dark:text-emerald-400",
+};
+
+function Toolbar({
+  experiments,
+  activeId,
+  onSelect,
+  status,
+  onRun,
+  onReset,
+  rootRef,
+}: {
+  experiments?: BenchExperiment[];
+  activeId?: string;
+  onSelect?: (id: string) => void;
+  status: RunStatus;
+  onRun: () => void;
+  onReset: () => void;
+  rootRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  const toggleFullscreen = () => {
+    const el = rootRef.current;
+    if (!el) return;
+    if (document.fullscreenElement) void document.exitFullscreen?.();
+    else void el.requestFullscreen?.();
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-t border-border bg-muted/40 px-3 py-2">
+      {experiments && experiments.length > 0 && (
+        <div role="tablist" aria-label="Expériences" className="flex flex-wrap gap-1">
+          {experiments.map((x) => (
+            <button
+              key={x.id}
+              id={`banc-${x.id}`}
+              data-toc={x.label}
+              role="tab"
+              aria-selected={activeId === x.id}
+              onClick={() => onSelect?.(x.id)}
+              className={cn(
+                "rounded-full border px-2.5 py-0.5 text-xs transition-colors",
+                activeId === x.id
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {x.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="ml-auto flex items-center gap-2">
+        <span
+          role="status"
+          className={cn("flex items-center gap-1.5 text-[11px]", STATUS_TONE[status])}
+        >
+          <span aria-hidden="true">●</span>
+          {STATUS_LABEL[status]}
+        </span>
+        <button
+          onClick={onRun}
+          className="rounded-md bg-primary px-2.5 py-1 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
+        >
+          ▶ Exécuter <kbd className="ml-1 font-sans text-[10px] opacity-70">⌘↵</kbd>
+        </button>
+        <button
+          onClick={onReset}
+          className="rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium hover:bg-accent"
+        >
+          Réinit.
+        </button>
+        <button
+          onClick={toggleFullscreen}
+          aria-label="Basculer le banc en plein écran"
+          title="Plein écran"
+          className="rounded-md border border-border bg-background px-2 py-1 text-xs hover:bg-accent"
+        >
+          ⤢
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function PaneHeader({ label, children }: { label: string; children?: ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-1.5">
+      <span className="text-xs font-medium text-muted-foreground">{label}</span>
+      {children}
+    </div>
+  );
+}
+
+function InspectorTab({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      aria-selected={active}
+      role="tab"
+      className={cn(
+        "rounded-t-md px-2.5 py-1 text-xs font-medium transition-colors",
+        active
+          ? "bg-background text-foreground shadow-[inset_0_1px_0_theme(colors.border),inset_1px_0_0_theme(colors.border),inset_-1px_0_0_theme(colors.border)]"
+          : "text-muted-foreground hover:text-foreground",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+/* ——— La scène : le rendu, pleine largeur et redimensionnable ——— */
+
+function Stage({
+  status,
+  onRun,
+  execution,
+  codeValue,
+  dataValue,
+  scope,
+  tracker,
+  onLog,
+}: {
+  status: RunStatus;
+  onRun: () => void;
+  execution: { key: number } | null;
+  codeValue: string;
+  dataValue: string;
+  scope: Record<string, unknown>;
+  tracker: Tracker;
+  onLog: (type: "log" | "warn" | "error", args: unknown[]) => void;
+}) {
+  const [height, setHeight] = useState<number>(() => readStageHeight());
+  const drag = useRef<{ y: number; h: number } | null>(null);
+
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    drag.current = { y: e.clientY, h: height };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!drag.current) return;
+    setHeight(Math.max(STAGE_MIN, drag.current.h + (e.clientY - drag.current.y)));
+  };
+  const onPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    drag.current = null;
+    e.currentTarget.releasePointerCapture(e.pointerId);
+    try {
+      localStorage.setItem(STAGE_KEY, String(height));
+    } catch {
+      /* stockage indisponible : la hauteur reste locale à la session */
+    }
+  };
+
+  return (
+    <>
+      <div
+        role="separator"
+        aria-label="Redimensionner la scène"
+        aria-orientation="horizontal"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        className="group flex h-2 cursor-row-resize items-center justify-center border-y border-border bg-muted/40"
+      >
+        <span className="h-0.5 w-9 rounded-full bg-border group-hover:bg-muted-foreground/50" />
+      </div>
+
+      <PaneHeader label="Rendu" />
+      <div
+        style={{ height }}
+        className="code-scroll overflow-auto bg-background p-4"
+      >
+        {execution ? (
+          <RenderedView
+            key={execution.key}
+            code={codeValue}
+            data={dataValue}
+            scope={scope}
+            tracker={tracker}
+            onLog={onLog}
+            onError={(message) => onLog("error", [message])}
+          />
+        ) : (
+          <button
+            onClick={onRun}
+            className="flex h-full w-full flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-border text-sm text-muted-foreground hover:border-primary/40 hover:text-foreground"
+          >
+            <span className="text-lg" aria-hidden="true">
+              ▶
+            </span>
+            Appuyez sur Exécuter <kbd className="font-mono text-xs">⌘↵</kbd> pour lancer
+          </button>
+        )}
+        {status === "modifie" && execution && (
+          <p className="mt-3 text-[11px] text-amber-600 dark:text-amber-400">
+            Ce rendu ne correspond plus au code affiché — ré-exécutez (⌘↵).
+          </p>
+        )}
+      </div>
+    </>
+  );
+}
+
+function readStageHeight(): number {
+  try {
+    const stored = Number(localStorage.getItem(STAGE_KEY));
+    return Number.isFinite(stored) && stored >= STAGE_MIN ? stored : STAGE_DEFAULT;
+  } catch {
+    return STAGE_DEFAULT;
+  }
+}
+
+/** Validation JSON en direct : on n'attend pas l'exécution pour dire que le
+ *  contrat de données ne passe pas. */
+function checkJson(value: string): { ok: boolean; label: string } {
+  if (value.trim() === "") return { ok: true, label: "vide" };
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) return { ok: true, label: `${parsed.length} éléments` };
+    return { ok: true, label: "valide" };
+  } catch (err) {
+    return { ok: false, label: err instanceof Error ? err.message : "JSON invalide" };
+  }
 }
 
 function formatArgs(args: unknown[]): string {
@@ -193,18 +546,29 @@ export function formatValue(value: unknown): string {
 
 // ——— Tracé des hooks use*** ———
 
-/** État observé d'un hook : le nom (ex. "useState[1]") et la série des
- *  valeurs successives — une entrée par rendu où la valeur change.
- *  « L'état des données à chaque moment » (exigence du banc d'essai). */
-export interface HookTrace {
+/** Un hook observé à une passe de rendu donnée. */
+export interface HookSample {
+  /** Le vrai nom de variable (`count`) si connu, sinon `useState[0]` */
   name: string;
-  values: string[];
+  kind: string;
+  value: string;
+  /** Différent de la même position à la passe précédente */
+  changed: boolean;
+}
+
+/** Une passe de rendu : ce que React a fait, et pourquoi. */
+export interface RenderPass {
+  /** 1, 2, 3… */
+  index: number;
+  /** Le setter qui a déclenché cette passe — null au montage */
+  trigger: string | null;
+  samples: HookSample[];
 }
 
 /**
- * Tracker : enregistre chaque appel de hook du code du banc, ordonné par
- * (kind + index d'appel dans la passe). Notifie les abonnés après chaque
- * échantillon — le panneau « État des hooks » re-rend via useSyncExternalStore.
+ * Tracker : enregistre chaque appel de hook du code du banc et les regroupe
+ * par PASSE DE RENDU, avec le déclencheur qui l'a provoquée. Notifie les
+ * abonnés après chaque commit — le panneau re-rend via useSyncExternalStore.
  *
  * Les pushes sont bufferisés : une passe de rendu React peut être suivie
  * d'une re-passe identique (StrictMode en dev, re-rendu parent sans
@@ -215,28 +579,53 @@ export interface HookTrace {
  * Instances stables (arrow properties) pour ne jamais casser l'abonnement.
  */
 export class Tracker {
-  private hooks = new Map<string, string[]>();
+  private passes: RenderPass[] = [];
   private buffer: { kind: string; value: unknown }[] = [];
   private listeners = new Set<() => void>();
   private version = 0;
   private scheduled = false;
+  private naming: HookNaming = EMPTY_NAMING;
+  /** Compteur d'appels par kind DANS la passe en cours — sert à nommer le setter. */
+  private liveCounts = new Map<string, number>();
+  private pendingTrigger: string | null = null;
+
+  /** Noms de variables relevés dans le code du banc (design §5.2). */
+  setNaming(naming: HookNaming): void {
+    this.naming = naming;
+  }
 
   /** Appelé PENDANT le rendu du composant sandbox (effet de bord bénin :
-   *  ni setState React, ni DOM — juste un échantillon + notification). */
-  push(kind: string, value: unknown): void {
+   *  ni setState React, ni DOM — juste un échantillon + notification).
+   *  Renvoie l'index de cet appel pour son kind, afin de nommer son setter. */
+  push(kind: string, value: unknown): number {
+    const declared = this.naming.values.get(kind)?.length ?? 0;
+    const seen = this.liveCounts.get(kind) ?? 0;
+    this.liveCounts.set(kind, seen + 1);
     this.buffer.push({ kind, value });
     this.scheduleCommit();
+    // Modulo : une re-passe StrictMode rejoue la même séquence, l'index doit
+    // repartir de 0 au lieu de déborder sur des noms inexistants.
+    return declared > 0 ? seen % declared : seen;
+  }
+
+  /** Nom du setter du k-ième hook de ce kind, s'il est connu. */
+  setterName(kind: string, index: number): string | null {
+    return this.naming.setters.get(kind)?.[index] ?? null;
   }
 
   /** Nouvelle passe de rendu (setter appelé, ré-exécution) : la passe en
-   *  cours est commitée immédiatement, la suivante repart des index 0. */
-  beginRender(): void {
+   *  cours est commitée immédiatement, la suivante repart des index 0 et
+   *  retiendra `trigger` comme cause. */
+  beginRender(trigger: string | null = null): void {
     this.commitNow();
+    this.pendingTrigger = trigger;
   }
 
   reset(): void {
-    this.hooks.clear();
+    this.passes = [];
     this.buffer = [];
+    this.liveCounts.clear();
+    this.pendingTrigger = null;
     this.version++;
     this.emit();
   }
@@ -246,12 +635,12 @@ export class Tracker {
     this.commitNow();
   }
 
-  snapshot(): HookTrace[] {
-    return [...this.hooks.entries()].map(([name, values]) => ({ name, values }));
+  snapshot(): RenderPass[] {
+    return this.passes;
   }
 
   get isEmpty(): boolean {
-    return this.hooks.size === 0;
+    return this.passes.length === 0;
   }
 
   subscribe = (listener: () => void): (() => void) => {
@@ -274,6 +663,7 @@ export class Tracker {
     if (this.buffer.length === 0) return;
     const seq = this.buffer;
     this.buffer = [];
+    this.liveCounts.clear();
 
     // Re-passe identique (StrictMode) : la séquence d'une passe de rendu
     // suit exactement celle de la précédente → enregistrer une seule fois.
@@ -283,26 +673,31 @@ export class Tracker {
       seq.slice(0, half).every((s, i) => s.kind === seq[half + i].kind && s.value === seq[half + i].value);
     const finalSeq = isRedite ? seq.slice(0, half) : seq;
 
+    const previous = this.passes[this.passes.length - 1];
     const counters = new Map<string, number>();
-    let changed = false;
-    for (const { kind, value } of finalSeq) {
-      const index = counters.get(kind) ?? 0;
-      counters.set(kind, index + 1);
-      const name = `${kind}[${index}]`;
-      const rendered = formatValue(value);
-      const list = this.hooks.get(name);
-      if (!list) {
-        this.hooks.set(name, [rendered]);
-        changed = true;
-      } else if (list[list.length - 1] !== rendered) {
-        list.push(rendered);
-        changed = true;
-      }
-    }
-    if (changed) {
-      this.version++;
-      this.emit();
-    }
+    const samples: HookSample[] = finalSeq.map((entry, position) => {
+      const index = counters.get(entry.kind) ?? 0;
+      counters.set(entry.kind, index + 1);
+      const declared = this.naming.values.get(entry.kind)?.[index];
+      const value = formatValue(entry.value);
+      const before = previous?.samples[position];
+      return {
+        name: declared ?? `${entry.kind}[${index}]`,
+        kind: entry.kind,
+        value,
+        // Au montage rien n'a « changé » : tout naît. Le marqueur ne prend
+        // son sens qu'à partir de la deuxième passe.
+        changed: previous ? !before || before.value !== value : false,
+      };
+    });
+
+    this.passes = [
+      ...this.passes,
+      { index: this.passes.length + 1, trigger: this.pendingTrigger, samples },
+    ];
+    this.pendingTrigger = null;
+    this.version++;
+    this.emit();
   }
 
   private emit(): void {
@@ -320,11 +715,15 @@ function isReactLike(value: unknown): value is Record<string, unknown> {
 }
 
 /** Enrobe un déclencheur de re-rendu (setState, dispatch…) : la passe de
- *  rendu qui suit repart des index 0 — les hooks re-rendus prolongent leur
- *  historique au lieu d'être confondus avec de nouveaux hooks. */
-function tracedSetter(tracker: Tracker, setter: Function): Function {
+ *  rendu qui suit repart des index 0 et retient QUI l'a déclenchée. */
+function tracedSetter(
+  tracker: Tracker,
+  setter: Function,
+  kind: string,
+  index: number,
+): Function {
   return (...args: unknown[]) => {
-    tracker.beginRender();
+    tracker.beginRender(tracker.setterName(kind, index) ?? `${kind}[${index}]`);
     return setter(...args);
   };
 }
@@ -342,14 +741,14 @@ function instrumentedReact(
 
   hooks.useState = (initial: unknown) => {
     const pair = (react.useState as (i: unknown) => [unknown, (v: unknown) => void])(initial);
-    tracker.push("useState", pair[0]);
-    return [pair[0], tracedSetter(tracker, pair[1])];
+    const i = tracker.push("useState", pair[0]);
+    return [pair[0], tracedSetter(tracker, pair[1], "useState", i)];
   };
 
   hooks.useReducer = (reducer: unknown, init: unknown) => {
     const triple = (react.useReducer as (r: unknown, i: unknown) => [unknown, unknown])(reducer, init);
-    tracker.push("useReducer", triple[0]);
-    return [triple[0], tracedSetter(tracker, triple[1] as Function)];
+    const i = tracker.push("useReducer", triple[0]);
+    return [triple[0], tracedSetter(tracker, triple[1] as Function, "useReducer", i)];
   };
 
   hooks.useMemo = (factory: unknown, deps: unknown) => {
@@ -390,20 +789,20 @@ function instrumentedReact(
 
   hooks.useTransition = () => {
     const pair = (react.useTransition as () => [boolean, (fn: () => void) => void])();
-    tracker.push("useTransition", `isPending:${String(pair[0])}`);
-    return [pair[0], tracedSetter(tracker, pair[1])];
+    const i = tracker.push("useTransition", `isPending:${String(pair[0])}`);
+    return [pair[0], tracedSetter(tracker, pair[1], "useTransition", i)];
   };
 
   hooks.useOptimistic = (value: unknown) => {
     const pair = (react.useOptimistic as (v: unknown) => [unknown, unknown])(value);
-    tracker.push("useOptimistic", pair[0]);
-    return [pair[0], tracedSetter(tracker, pair[1] as Function)];
+    const i = tracker.push("useOptimistic", pair[0]);
+    return [pair[0], tracedSetter(tracker, pair[1] as Function, "useOptimistic", i)];
   };
 
   hooks.useActionState = (action: unknown, initial: unknown) => {
     const triple = (react.useActionState as (a: unknown, i: unknown) => [unknown, unknown, boolean])(action, initial);
-    tracker.push("useActionState", triple[0]);
-    return [triple[0], tracedSetter(tracker, triple[1] as Function), triple[2]];
+    const i = tracker.push("useActionState", triple[0]);
+    return [triple[0], tracedSetter(tracker, triple[1] as Function, "useActionState", i), triple[2]];
   };
 
   hooks.use = (input: unknown) => {
@@ -429,51 +828,80 @@ export function instrumentScope(
   return out;
 }
 
-// ——— Exécution du code utilisateur ———
+// ——— Affichage du tracé ———
 
-/** Panneau « État des hooks » : la valeur de chaque hook use*** à chaque
- *  rendu, et son historique (les valeurs successives, dédupliquées).
- *  Re-rend via useSyncExternalStore à chaque échantillon du Tracker.
- *  Exposé pour les tests. */
+/** Badge de comptage des hooks de la dernière passe. */
+function HookCount({ tracker }: { tracker: Tracker }) {
+  useSyncExternalStore(tracker.subscribe, tracker.getSnapshot, () => -1);
+  const passes = tracker.snapshot();
+  const count = passes[passes.length - 1]?.samples.length ?? 0;
+  if (count === 0) return null;
+  return <span className="ml-1 opacity-70">{count}</span>;
+}
+
+/**
+ * Panneau « État des hooks » : la chronologie des passes de rendu. Chaque
+ * colonne est un rendu, avec son déclencheur et la valeur de chaque hook.
+ * Re-rend via useSyncExternalStore à chaque commit du Tracker.
+ * Exposé pour les tests.
+ */
 export function HookMonitor({ tracker }: { tracker: Tracker }) {
-  const traces = useSyncExternalStore(tracker.subscribe, tracker.getSnapshot, () => -1);
-  void traces; // le numéro de version ne sert qu'à déclencher le re-rendu
-  const hooks = tracker.snapshot();
+  useSyncExternalStore(tracker.subscribe, tracker.getSnapshot, () => -1);
+  const passes = tracker.snapshot();
 
-  if (hooks.length === 0) {
+  if (passes.length === 0) {
     return (
-      <div className="border-t border-border px-3 py-2 text-xs text-muted-foreground">
-        État des hooks{" "}
-        <span aria-hidden>·</span> aucun hook use*** exécuté
+      <div className="px-3 py-3 text-xs text-muted-foreground">
+        État des hooks <span aria-hidden="true">·</span> aucun hook use*** exécuté
       </div>
     );
   }
 
   return (
-    <div className="border-t border-border px-3 py-2">
-      <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-        État des hooks — la valeur à chaque rendu
-      </div>
-      <ul className="mt-1.5 space-y-1.5">
-        {hooks.map((hook) => {
-          const current = hook.values[hook.values.length - 1];
-          const history = hook.values.slice(0, -1);
-          return (
-            <li key={hook.name} className="text-xs leading-snug">
-              <span className="font-mono text-muted-foreground">{hook.name}</span>{" "}
-              <span className="font-medium">{current}</span>
-              {history.length > 0 && (
-                <span className="mt-0.5 block truncate font-mono text-[10px] text-muted-foreground/70">
-                  {history.join(" → ")} →
-                </span>
-              )}
-            </li>
-          );
-        })}
-      </ul>
+    <div className="code-scroll overflow-x-auto px-3 py-3">
+      <ol className="flex min-w-fit gap-4">
+        {passes.map((pass) => (
+          <li
+            key={pass.index}
+            className={cn(
+              "min-w-[10rem] border-l-2 pl-3",
+              pass.trigger ? "border-primary/60" : "border-border",
+            )}
+          >
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Rendu #{pass.index}
+            </p>
+            <p className="font-mono text-[10px] text-muted-foreground/80">
+              {pass.trigger ? `← ${pass.trigger}` : "montage"}
+            </p>
+            <ul className="mt-1.5 flex flex-col gap-0.5">
+              {pass.samples.map((s, i) => (
+                <li key={`${s.name}-${i}`} className="font-mono text-xs leading-snug">
+                  <span className="text-emerald-600 dark:text-emerald-400">{s.name}</span>{" "}
+                  <span className="text-[10px] text-muted-foreground">{s.kind}</span>{" "}
+                  <span className="text-foreground">{s.value}</span>
+                  {pass.index > 1 &&
+                    (s.changed ? (
+                      <span className="text-amber-500"> ⚡</span>
+                    ) : (
+                      <span className="text-[10px] text-muted-foreground/60">
+                        {" "}
+                        {s.kind === "useMemo" || s.kind === "useCallback"
+                          ? "cache réutilisé"
+                          : "inchangé"}
+                      </span>
+                    ))}
+                </li>
+              ))}
+            </ul>
+          </li>
+        ))}
+      </ol>
     </div>
   );
 }
+
+// ——— Exécution du code utilisateur ———
 
 class BenchErrorBoundary extends Component<
   { children: ReactNode; onError: (message: string) => void },
@@ -581,7 +1009,7 @@ function evaluate(
   const tracedScope = instrumentScope(scope, tracker);
 
   // La zone « Données (JSON) » du panneau alimente un paramètre `data`.
-  // Conflit : les exemples qui déclarent leur PROPRRE variable
+  // Conflit : les exemples qui déclarent leur PROPRE variable
   // (`const data = […]`) redeclarent le paramètre → SyntaxError.
   // On n'injecte alors pas `data` — l'exemple vit avec sa déclaration.
   const declaresOwnData = /\b(?:const|let|var|function|class)\s+data\b/.test(code);

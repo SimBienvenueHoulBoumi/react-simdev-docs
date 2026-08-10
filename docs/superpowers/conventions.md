@@ -60,3 +60,18 @@ Coût d'ajout : **un fichier + une ligne** (spec §6.5).
 - `aria-disabled` quand un composant est visuellement inactif, `disabled` quand l'action est vraiment bloquée.
 - `role="alert"` pour les erreurs, `role="status"` pour les confirmations.
 - Le dark mode est une exigence : chaque nouveau composant se vérifie en clair ET en sombre.
+
+## 10. Écrire une expérience de banc d'essai
+
+Une fiche peut fournir des **expériences commutables** (`BenchSection experiments={…}`) : chacune isole UN mécanisme et porte sa thèse en clair.
+
+- **Un seul composant à hooks par expérience.** C'est la condition du nommage : le panneau apparie les noms de variables par ordre textuel, ce qui n'est fiable qu'avec un composant unique. Dès qu'il y en a deux, il retombe volontairement sur `useState[0]` plutôt que de risquer un nom faux (design §5.2).
+- **Une thèse, pas une description.** « Sans `useState`, React ne rend rien » — une phrase que l'expérience prouve, pas un résumé de ce qu'elle contient.
+- **`id` en kebab-case** : il devient l'ancre `#banc-<id>`, sélectionnable depuis le sommaire et partageable par URL.
+- Le code suit le contrat d'exécution du banc (spec §7) : soit une expression de rendu seule, soit un programme avec `return` de premier niveau.
+
+## 11. Ancres de sommaire
+
+Le sommaire de droite est un **miroir vivant du DOM** (`MutationObserver` sur `<main>`) : il indexe les `h2[id]` / `h3[id]` **et** tout élément portant `data-toc` + `id`, qui entre alors au niveau 3 avec `data-toc` pour libellé.
+
+Utiliser `data-toc` pour rendre navigable ce qui n'est pas un titre (onglets, sections commutables). Ne jamais inventer un titre invisible pour créer une ancre.
