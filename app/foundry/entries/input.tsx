@@ -60,7 +60,7 @@ export function InputDoc() {
 
       <Code
     tw={{ source: inputTwSource, filename: "components/ui/tw/input.tsx", depsCode: [cnSource], depsNames: ["lib/cn.ts"] }}
-    mui={{ source: inputMuiSource, filename: "components/ui/mui/input.tsx", depsCode: [cnSource], depsNames: ["lib/cn.ts"] }}
+    mui={{ source: inputMuiSource, filename: "components/ui/mui/input.tsx" }}
   />
 
       <PropsTable rows={[
@@ -129,7 +129,7 @@ return <Demo />;`}
 
       <Facts
         facts={[
-          { label: "Prérequis", value: "React 19 · Tailwind 4 · lib/cn.ts" },
+          { label: "Prérequis", value: "TW : React 19 · Tailwind 4 · lib/cn.ts — MUI : React 19 · @mui/material" },
           { label: "Accessibilité", value: "aria-invalid sur erreur, focus visible. Le label reste à votre charge (voir Field)." },
           { label: "Poids", value: "~35 lignes, zéro dépendance" },
         ]}

@@ -59,7 +59,7 @@ export function AvatarDoc() {
 
       <Code
     tw={{ source: avatarTwSource, filename: "components/ui/tw/avatar.tsx", depsCode: [cnSource], depsNames: ["lib/cn.ts"] }}
-    mui={{ source: avatarMuiSource, filename: "components/ui/mui/avatar.tsx", depsCode: [cnSource], depsNames: ["lib/cn.ts"] }}
+    mui={{ source: avatarMuiSource, filename: "components/ui/mui/avatar.tsx" }}
   />
 
       <PropsTable rows={[
@@ -123,7 +123,7 @@ return (
 
       <Facts
         facts={[
-          { label: "Prérequis", value: "React 19 · Tailwind 4 · lib/cn.ts" },
+          { label: "Prérequis", value: "TW : React 19 · Tailwind 4 · lib/cn.ts — MUI : React 19 · @mui/material" },
           { label: "Accessibilité", value: "role=\"img\" + aria-label = le nom complet." },
           { label: "Poids", value: "~45 lignes, zéro dépendance" },
         ]}

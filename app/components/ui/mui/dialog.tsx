@@ -6,7 +6,6 @@ import { type ReactNode, type Ref } from "react";
 import MuiDialog from "@mui/material/Dialog";
 import MuiDialogTitle from "@mui/material/DialogTitle";
 import MuiDialogContent from "@mui/material/DialogContent";
-import { cn } from "~/lib/cn";
 
 export interface DialogProps {
   open: boolean;
@@ -24,13 +23,13 @@ export function Dialog({ open, onClose, title, children, className, ref }: Dialo
       open={open}
       onClose={onClose}
       aria-labelledby={undefined}
-      className={cn(className)}
+      className={className}
       slotProps={{
         paper: { sx: { borderRadius: 2, maxWidth: 480, width: "100%" } },
       }}
     >
-      <MuiDialogTitle className="px-6 pt-5">{title}</MuiDialogTitle>
-      <MuiDialogContent className="px-6 pb-6 pt-2">{children}</MuiDialogContent>
+      <MuiDialogTitle sx={{ px: 3, pt: 2.5 }}>{title}</MuiDialogTitle>
+      <MuiDialogContent sx={{ px: 3, pb: 3, pt: 1 }}>{children}</MuiDialogContent>
     </MuiDialog>
   );
 }

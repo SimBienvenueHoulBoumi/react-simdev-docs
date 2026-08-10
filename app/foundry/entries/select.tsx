@@ -68,7 +68,7 @@ export function SelectDoc() {
 
       <Code
     tw={{ source: selectTwSource, filename: "components/ui/tw/select.tsx", depsCode: [cnSource], depsNames: ["lib/cn.ts"] }}
-    mui={{ source: selectMuiSource, filename: "components/ui/mui/select.tsx", depsCode: [cnSource], depsNames: ["lib/cn.ts"] }}
+    mui={{ source: selectMuiSource, filename: "components/ui/mui/select.tsx" }}
   />
 
       <PropsTable rows={[
@@ -145,7 +145,7 @@ return <Demo />;`}
 
       <Facts
         facts={[
-          { label: "Prérequis", value: "React 19 · Tailwind 4 · lib/cn.ts" },
+          { label: "Prérequis", value: "TW : React 19 · Tailwind 4 · lib/cn.ts — MUI : React 19 · @mui/material" },
           { label: "Accessibilité", value: "Clavier natif (flèches, Échap), lecteur d'écran : rien à ajouter." },
           { label: "Poids", value: "~50 lignes, zéro dépendance" },
         ]}

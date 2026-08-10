@@ -58,7 +58,7 @@ export function DialogDoc() {
 
       <Code
     tw={{ source: dialogTwSource, filename: "components/ui/tw/dialog.tsx", depsCode: [cnSource], depsNames: ["lib/cn.ts"] }}
-    mui={{ source: dialogMuiSource, filename: "components/ui/mui/dialog.tsx", depsCode: [cnSource], depsNames: ["lib/cn.ts"] }}
+    mui={{ source: dialogMuiSource, filename: "components/ui/mui/dialog.tsx" }}
   />
 
       <PropsTable rows={[
@@ -140,7 +140,7 @@ return <Demo />;`}
 
       <Facts
         facts={[
-          { label: "Prérequis", value: "React 19 · Tailwind 4 · lib/cn.ts" },
+          { label: "Prérequis", value: "TW : React 19 · Tailwind 4 · lib/cn.ts — MUI : React 19 · @mui/material" },
           { label: "Accessibilité", value: "Clavier : Tab piégé, Échap ferme. aria-modal=\"true\". Fond en aria-hidden par le voile." },
           { label: "Poids", value: "~110 lignes, zéro dépendance" },
         ]}

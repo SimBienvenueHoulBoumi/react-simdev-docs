@@ -58,7 +58,7 @@ export function TextareaDoc() {
 
       <Code
     tw={{ source: textareaTwSource, filename: "components/ui/tw/textarea.tsx", depsCode: [cnSource], depsNames: ["lib/cn.ts"] }}
-    mui={{ source: textareaMuiSource, filename: "components/ui/mui/textarea.tsx", depsCode: [cnSource], depsNames: ["lib/cn.ts"] }}
+    mui={{ source: textareaMuiSource, filename: "components/ui/mui/textarea.tsx" }}
   />
 
       <PropsTable rows={[
@@ -122,7 +122,7 @@ return <Demo />;`}
 
       <Facts
         facts={[
-          { label: "Prérequis", value: "React 19 · Tailwind 4 · lib/cn.ts" },
+          { label: "Prérequis", value: "TW : React 19 · Tailwind 4 · lib/cn.ts — MUI : React 19 · @mui/material" },
           { label: "Accessibilité", value: "aria-invalid sur erreur, label à votre charge." },
           { label: "Poids", value: "~35 lignes, zéro dépendance" },
         ]}

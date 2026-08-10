@@ -4,7 +4,6 @@
 
 import { type Ref } from "react";
 import MuiAvatar from "@mui/material/Avatar";
-import { cn } from "~/lib/cn";
 
 export interface AvatarProps {
   imgSrc?: string;
@@ -31,7 +30,7 @@ export function Avatar({ imgSrc, name, size = "md", className, ref }: AvatarProp
       src={imgSrc}
       alt={name}
       title={name}
-      className={cn(className)}
+      className={className}
       sx={{
         width: px[size],
         height: px[size],

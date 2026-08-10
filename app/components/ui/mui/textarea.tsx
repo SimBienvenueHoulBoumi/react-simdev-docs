@@ -3,7 +3,6 @@
 
 import { type ComponentPropsWithoutRef, type Ref } from "react";
 import MuiTextField from "@mui/material/TextField";
-import { cn } from "~/lib/cn";
 
 export interface TextareaProps extends ComponentPropsWithoutRef<"textarea"> {
   error?: string;
@@ -17,7 +16,7 @@ export function Textarea({ className, error, ref, rows = 3, ...rest }: TextareaP
       inputRef={ref}
       error={Boolean(error)}
       helperText={error}
-      className={cn("MuiFormControl-root", className)}
+      className={className}
       size="small"
       variant="outlined"
       multiline

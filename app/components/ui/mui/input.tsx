@@ -4,7 +4,6 @@
 
 import { type ComponentPropsWithoutRef, type Ref } from "react";
 import MuiTextField from "@mui/material/TextField";
-import { cn } from "~/lib/cn";
 
 export interface InputProps extends ComponentPropsWithoutRef<"input"> {
   error?: string;
@@ -18,7 +17,7 @@ export function Input({ className, error, ref, ...rest }: InputProps) {
       inputRef={ref}
       error={Boolean(error)}
       helperText={error}
-      className={cn("MuiFormControl-root", className)}
+      className={className}
       size="small"
       variant="outlined"
       slotProps={{

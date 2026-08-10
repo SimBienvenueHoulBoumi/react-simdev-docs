@@ -5,7 +5,7 @@
 import { type ComponentPropsWithoutRef, type ReactNode, type Ref } from "react";
 import MuiSelect from "@mui/material/Select";
 import FormHelperText from "@mui/material/FormHelperText";
-import { cn } from "~/lib/cn";
+import Stack from "@mui/material/Stack";
 
 export interface SelectProps extends ComponentPropsWithoutRef<"select"> {
   error?: string;
@@ -23,13 +23,13 @@ export function Select({
   ...rest
 }: SelectProps) {
   return (
-    <div className="flex w-full flex-col gap-1">
+    <Stack spacing={0.5} sx={{ width: "100%" }}>
       <MuiSelect
         native
         inputRef={ref}
         size="small"
         error={Boolean(error)}
-        className={cn("MuiInputBase-root", className)}
+        className={className}
         {...(rest as object)}
       >
         {placeholder !== undefined && (
@@ -40,6 +40,6 @@ export function Select({
         {children}
       </MuiSelect>
       {error && <FormHelperText error>{error}</FormHelperText>}
-    </div>
+    </Stack>
   );
 }
