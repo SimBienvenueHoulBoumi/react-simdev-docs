@@ -126,6 +126,12 @@ export default function FoundryLayout() {
                 </svg>
               </button>
             </div>
+            {/* Bascule du moteur accessible sur mobile — sinon un choix
+                persisté (ex. MUI) devenait impossible à annuler (§9.1). */}
+            <div className="mb-4 flex items-center justify-between gap-2">
+              <EngineToggle />
+              <ThemeToggle />
+            </div>
             <FoundryNav activeSlug={activeSlug} />
           </div>
         </div>

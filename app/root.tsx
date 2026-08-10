@@ -9,6 +9,7 @@ import {
 
 import type { Route } from "./+types/root";
 import { StyleEngineProvider } from "./lib/style-engine";
+import { MuiThemeProvider } from "./lib/mui-theme";
 import "./app.css";
 
 export const links: Route.LinksFunction = () => [
@@ -60,7 +61,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <StyleEngineProvider>
-      <Outlet />
+      <MuiThemeProvider>
+        <Outlet />
+      </MuiThemeProvider>
     </StyleEngineProvider>
   );
 }
