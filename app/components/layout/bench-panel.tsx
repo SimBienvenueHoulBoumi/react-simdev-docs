@@ -238,6 +238,13 @@ function RenderedView({
   );
 }
 
+/** Le code du banc est-il un programme avec un `return` de premier
+ *  niveau (colonne 0) ? Exposé pour les tests — la règle de wrapper
+ *  en dépend intégralement (spec §7). */
+export function hasTopLevelReturnIn(code: string): boolean {
+  return /^return\b/m.test(code.trimStart());
+}
+
 // Transpile + exécute le JSX utilisateur avec un scope explicite.
 // Le code est une expression de rendu : on injecte les variables via l'argument.
 function evaluate(
@@ -258,8 +265,8 @@ function evaluate(
   // 2. un PROGRAMME avec `return` de premier niveau
   //    (`function Demo(){…}\nreturn <Demo/>`) → exécuté tel quel.
   // Wrapper avec un return sur une expression qui en contient déjà un
-  // lève « Unexpected token 'return' » (le bug que ce test verrouille).
-  const hasTopLevelReturn = /^return\b/m.test(code.trimStart());
+  // lève « Unexpected token 'return' » (le bug que le test verrouille).
+  const hasTopLevelReturn = hasTopLevelReturnIn(code);
   const body = hasTopLevelReturn ? compiled : `return (${compiled});`;
 
   const keys = Object.keys(scope).filter((k) => k !== "React");

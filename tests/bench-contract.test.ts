@@ -1,48 +1,44 @@
-// Pourquoi : verrouille le contrat d'exécution du banc d'essai (spec §7) —
-// les deux formes de code acceptées ne doivent plus jamais régresser :
-// 1. expression de rendu seule (`<X/>`) → wrappée dans un return ;
-// 2. programme avec `return` de premier niveau (`function Demo(){…}\n
-//    return <Demo/>`) → exécuté tel quel (le wrapper cassait ça :
-//    « Unexpected token 'return' »).
-// Le contrat vaut pour `evaluate` : on réplique sa logique ici, sans DOM.
+// Pourquoi : verrouille le contrat d'exécution du banc d'essai (spec §7).
+// Deux formes de code sont acceptées par evaluate() :
+// 1. une EXPRESSION de rendu seule (`<X/>`) → wrappée dans `return (...)` ;
+// 2. un PROGRAMME avec `return` de premier niveau (`function Demo(){…}\n
+//    return <Demo/>`) → exécuté tel quel.
+// Oublier cette distinction a produit « Unexpected token 'return' » sur
+// 15 fiches sur 16. Le test importe la règle RÉELLE (bench-panel) — pas
+// une copie.
 
 import { describe, expect, it } from "vitest";
+import { hasTopLevelReturnIn } from "~/components/layout/bench-panel";
 
-/** Copie de la règle de bench-panel : détecte la forme de code. */
-function hasTopLevelReturn(code: string): boolean {
-  return /^return\b/m.test(code.trimStart());
-}
-
-function wrapIfNeeded(code: string): string {
-  const compiled = `return JSX(${JSON.stringify(code)})`;
-  return hasTopLevelReturn(code) ? compiled : `return (${compiled});`;
+function wrapDecided(code: string): string {
+  return hasTopLevelReturnIn(code) ? "<tel quel>" : "return (<wrapper>);";
 }
 
 describe("banc d'essai — contrat d'exécution", () => {
-  it("n'enveloppe pas un programme qui a déjà un return de premier niveau", () => {
+  it("programme `function Demo(){…}\\nreturn <Demo/>` : non wrappé", () => {
     const code = `function Demo() {\n  const [n] = React.useState(0);\n  return <p>{n}</p>;\n}\nreturn <Demo />;`;
-    expect(hasTopLevelReturn(code)).toBe(true);
-    expect(wrapIfNeeded(code).startsWith("return (return")).toBe(false);
-    const compiled = wrapIfNeeded(code);
-    expect(compiled).toContain("render(<Demo />)");
+    expect(hasTopLevelReturnIn(code)).toBe(true);
+    expect(wrapDecided(code)).toBe("<tel quel>");
   });
 
-  it("n'enveloppe pas `return (<X/>)` (forme empty-state)", () => {
+  it("forme `return (` (empty-state, skeleton) : non wrappée", () => {
     const code = `return (\n  <EmptyState\n    title={"Aucun résultat".replace("{}", data.query ?? "rien")}\n  />\n);`;
-    expect(hasTopLevelReturn(code)).toBe(true);
-    expect(wrapIfNeeded(code).startsWith("return (return")).toBe(false);
+    expect(hasTopLevelReturnIn(code)).toBe(true);
   });
 
-  it("enveloppe une expression de rendu seule (forme button)", () => {
+  it("expression seule (button) : wrappée dans un return", () => {
     const code = `<div className="flex gap-2"><Button variant="outline">Annuler</Button></div>`;
-    expect(hasTopLevelReturn(code)).toBe(false);
-    expect(wrapIfNeeded(code)).toBe(`return (return JSX(${JSON.stringify(code)}));`);
+    expect(hasTopLevelReturnIn(code)).toBe(false);
+    expect(wrapDecided(code)).toBe("return (<wrapper>);");
   });
 
-  it("un return indenté (dans une fonction) n'est pas un return de premier niveau", () => {
-    const code = `function Demo() {\n  return <p>bonjour</p>;\n}\nreturn <Demo />;`;
-    // Le return en colonne 0 existe bien — l'indenté seul ne suffirait pas.
-    expect(hasTopLevelReturn("const x = () => {\n  return 1;\n};")).toBe(false);
-    expect(hasTopLevelReturn(code)).toBe(true);
+  it("const data = […] + return : programme, non wrappé (avatar, card)", () => {
+    const code = `const data = [\n  { name: "a" },\n];\nreturn (\n  <ul>{data.map((d) => <li key={d.name}>{d.name}</li>)}</ul>\n);`;
+    expect(hasTopLevelReturnIn(code)).toBe(true);
+  });
+
+  it("un return indenté dans une fonction ne compte pas (arrow seule)", () => {
+    const code = `const x = () => {\n  return 1;\n};`;
+    expect(hasTopLevelReturnIn(code)).toBe(false);
   });
 });
