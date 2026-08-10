@@ -8,6 +8,7 @@ import {
 } from "react-router";
 
 import type { Route } from "./+types/root";
+import { NavigationProgress } from "./components/layout/navigation-progress";
 import { StyleEngineProvider } from "./lib/style-engine";
 import { MuiThemeProvider } from "./lib/mui-theme";
 import "./app.css";
@@ -62,6 +63,8 @@ export default function App() {
   return (
     <StyleEngineProvider>
       <MuiThemeProvider>
+        {/* Indicateur global : toute navigation qui dépasse le seuil se voit */}
+        <NavigationProgress />
         <Outlet />
       </MuiThemeProvider>
     </StyleEngineProvider>
