@@ -9,9 +9,18 @@ import {
 
 import type { Route } from "./+types/root";
 import { NavigationProgress } from "./components/layout/navigation-progress";
-import { StyleEngineProvider } from "./lib/style-engine";
+import { engineFromCookie, StyleEngineProvider } from "./lib/style-engine";
 import { MuiThemeProvider } from "./lib/mui-theme";
 import "./app.css";
+
+// Le moteur de style est lu ICI, côté serveur, pour que le HTML parte déjà dans
+// la bonne implémentation. Sans ça la page peignait en Tailwind puis se
+// re-skinnait en MUI après hydratation (mesuré : ~55 ms, sur chaque page).
+export function loader({ request }: Route.LoaderArgs) {
+  return {
+    engine: engineFromCookie(request.headers.get("Cookie")) ?? ("tailwind" as const),
+  };
+}
 
 export const links: Route.LinksFunction = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -34,6 +43,17 @@ const themeScript = `
     var t = localStorage.getItem("theme");
     var dark = t === "dark" || (!t && window.matchMedia("(prefers-color-scheme: dark)").matches);
     document.documentElement.classList.toggle("dark", dark);
+  } catch (e) {}
+  try {
+    // Migration : le moteur vivait dans localStorage, le serveur ne peut pas le
+    // lire. On le recopie une fois dans le cookie ; dès le chargement suivant le
+    // SSR rend la bonne implémentation et le re-skin disparaît définitivement.
+    if (!/(?:^|;\s*)foundry-engine=/.test(document.cookie)) {
+      var e = localStorage.getItem("foundry-engine");
+      if (e === "mui" || e === "tailwind") {
+        document.cookie = "foundry-engine=" + e + ";path=/;max-age=31536000;samesite=lax";
+      }
+    }
   } catch (e) {}
 })();
 `;
@@ -59,9 +79,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default function App() {
+export default function App({ loaderData }: Route.ComponentProps) {
   return (
-    <StyleEngineProvider>
+    <StyleEngineProvider initialEngine={loaderData.engine}>
       <MuiThemeProvider>
         {/* Indicateur global : toute navigation qui dépasse le seuil se voit */}
         <NavigationProgress />
