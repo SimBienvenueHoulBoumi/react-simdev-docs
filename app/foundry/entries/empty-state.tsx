@@ -89,7 +89,7 @@ function EmptyStateDoc() {
       <BenchSection
         code={`return (
   <EmptyState
-    title="Aucun résultat pour « ${"{}"}${"{}"} »".replace("${"{}"}${"{}"}", data.query ?? "rien")
+    title={"Aucun résultat pour « ${"{}"}${"{}"} »".replace("${"{}"}${"{}"}", data.query ?? "rien")}
     description="Essayez un autre terme ou réinitialisez les filtres."
     action={<Button size="sm" variant="outline">Réinitialiser</Button>}
   />

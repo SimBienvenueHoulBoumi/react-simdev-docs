@@ -122,7 +122,7 @@ export function ToastDoc() {
 }
 return <Demo />;`}
         data={""}
-        scope={{ useToast, Button, ReactScope }}
+        scope={{ useToast, ToastProvider, Button, ReactScope }}
       />
 
       <Pitfalls

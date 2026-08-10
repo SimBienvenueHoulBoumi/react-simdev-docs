@@ -9,10 +9,12 @@
 
 import {
   Component,
+  Fragment,
   useCallback,
   useEffect,
   useRef,
   useState,
+  type ComponentType,
   type ReactNode,
 } from "react";
 import { transform } from "sucrase";
@@ -224,7 +226,16 @@ function RenderedView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code, data]);
 
-  return <BenchErrorBoundary onError={onError}>{result}</BenchErrorBoundary>;
+  // Les exemples « système » (toast, field) appellent useToast() : leur
+  // rendu doit vivre sous un ToastProvider. S'il est dans le scope de la
+  // fiche, on enrobe automatiquement (sinon rendu nu).
+  const ToastWrapper = (scope.ToastProvider as ComponentType | undefined) ?? Fragment;
+
+  return (
+    <BenchErrorBoundary onError={onError}>
+      <ToastWrapper>{result}</ToastWrapper>
+    </BenchErrorBoundary>
+  );
 }
 
 // Transpile + exécute le JSX utilisateur avec un scope explicite.
@@ -242,12 +253,28 @@ function evaluate(
     production: true,
   }).code;
 
+  // Deux formes de code acceptées :
+  // 1. une EXPRESSION de rendu seule (`<X/>`) → `return (<expr>)` ;
+  // 2. un PROGRAMME avec `return` de premier niveau
+  //    (`function Demo(){…}\nreturn <Demo/>`) → exécuté tel quel.
+  // Wrapper avec un return sur une expression qui en contient déjà un
+  // lève « Unexpected token 'return' » (le bug que ce test verrouille).
+  const hasTopLevelReturn = /^return\b/m.test(code.trimStart());
+  const body = hasTopLevelReturn ? compiled : `return (${compiled});`;
+
   const keys = Object.keys(scope).filter((k) => k !== "React");
 
-  const params = ["React", "data", "console", ...keys];
-  const args = [
+  // La zone « Données (JSON) » du panneau alimente un paramètre `data`.
+  // Conflit : les exemples qui déclarent leur PROPRRE variable
+  // (`const data = […]`) redeclarent le paramètre → SyntaxError.
+  // On n'injecte alors pas `data` — l'exemple vit avec sa déclaration.
+  const declaresOwnData = /\b(?:const|let|var|function|class)\s+data\b/.test(code);
+  const dataParams = declaresOwnData ? [] : (["data"] as const);
+
+  const params = ["React", ...dataParams, "console", ...keys];
+  const args: unknown[] = [
     scope.React,
-    data,
+    ...(declaresOwnData ? [] : [data]),
     {
       log: (...a: unknown[]) => onLog("log", a),
       warn: (...a: unknown[]) => onLog("warn", a),
@@ -257,6 +284,6 @@ function evaluate(
   ];
 
   // eslint-disable-next-line no-new-func
-  const evaluator = new Function(...params, `return (${compiled});`);
+  const evaluator = new Function(...params, body);
   return evaluator(...args);
 }
