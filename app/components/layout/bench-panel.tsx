@@ -3,6 +3,8 @@
 // — Données (JSON) éditable
 // — Rendu live à l'exécution (⌘↵ / bouton)
 // — Console : console.log capturés + erreurs de compile/run avec message exact
+// — État des hooks : chaque hook use*** du code échantillonne ses valeurs
+//   successives (useState, useReducer, useMemo…) — voir Tracker
 // — Error boundary réinitialisée à chaque exécution (spec §7)
 
 "use client";
@@ -14,6 +16,7 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   type ComponentType,
   type ReactNode,
 } from "react";
@@ -37,12 +40,18 @@ export default function BenchPanel({ code, data, scope }: BenchPanelProps) {
   const [execution, setExecution] = useState<{ key: number; error?: string } | null>(null);
   const codeRef = useRef<HTMLTextAreaElement>(null);
   const dataRef = useRef<HTMLTextAreaElement>(null);
+  // Traqueur des hooks use*** — vit pendant toute la session du banc et
+  // se vide à chaque exécution (comme la console et la boundary).
+  const trackerRef = useRef<Tracker | null>(null);
+  if (!trackerRef.current) trackerRef.current = new Tracker();
+  const tracker = trackerRef.current;
 
   const run = useCallback(() => {
     setLogs([]);
+    tracker.reset();
     // Nouvelle clé → le RenderedView est remonté → erreurs de la run précédente purgées
     setExecution({ key: Date.now() });
-  }, []);
+  }, [tracker]);
 
   // Exécuter au clic, ⌘↵ ou Ctrl+↵
   useEffect(() => {
@@ -57,6 +66,7 @@ export default function BenchPanel({ code, data, scope }: BenchPanelProps) {
     setCodeValue(code);
     setDataValue(data);
     setLogs([]);
+    tracker.reset();
     setExecution(null);
   };
 
@@ -121,6 +131,7 @@ export default function BenchPanel({ code, data, scope }: BenchPanelProps) {
               code={codeValue}
               data={dataValue}
               scope={scope}
+              tracker={tracker}
               onLog={(type, args) => setLogs((prev) => [...prev, { type, args }])}
               onError={(message) =>
                 setLogs((prev) => [...prev, { type: "error", args: [message] }])
@@ -128,6 +139,7 @@ export default function BenchPanel({ code, data, scope }: BenchPanelProps) {
             />
           )}
         </div>
+        <HookMonitor tracker={tracker} />
         <div className="border-t border-border">
           <div className="flex items-center justify-between px-3 py-1.5">
             <span className="text-xs font-medium text-muted-foreground">
@@ -160,19 +172,308 @@ export default function BenchPanel({ code, data, scope }: BenchPanelProps) {
 }
 
 function formatArgs(args: unknown[]): string {
-  return args
-    .map((a) => {
-      if (typeof a === "string") return a;
-      try {
-        return JSON.stringify(a, null, 0);
-      } catch {
-        return String(a);
+  return args.map(formatValue).join(" ");
+}
+
+export function formatValue(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value === null) return "null";
+  if (value === undefined) return "undefined";
+  if (typeof value === "function") return "[fn]";
+  // Nœud DOM (ref) : afficher le tag, pas l'objet géant
+  if (typeof value === "object" && "nodeType" in (value as object)) {
+    return `<${(value as HTMLElement).tagName?.toLowerCase() ?? "element"}>`;
+  }
+  try {
+    return JSON.stringify(value, null, 0);
+  } catch {
+    return String(value);
+  }
+}
+
+// ——— Tracé des hooks use*** ———
+
+/** État observé d'un hook : le nom (ex. "useState[1]") et la série des
+ *  valeurs successives — une entrée par rendu où la valeur change.
+ *  « L'état des données à chaque moment » (exigence du banc d'essai). */
+export interface HookTrace {
+  name: string;
+  values: string[];
+}
+
+/**
+ * Tracker : enregistre chaque appel de hook du code du banc, ordonné par
+ * (kind + index d'appel dans la passe). Notifie les abonnés après chaque
+ * échantillon — le panneau « État des hooks » re-rend via useSyncExternalStore.
+ *
+ * Les pushes sont bufferisés : une passe de rendu React peut être suivie
+ * d'une re-passe identique (StrictMode en dev, re-rendu parent sans
+ * changement) — la redite est détectée à l'enregistrement (séquence divisée
+ * en deux moitiés égales) et fusionnée, sinon chaque interaction créerait
+ * des hooks fantômes. Le commit réel se fait à la microtâche suivante ;
+ * beginRender() (setter / run) commite immédiatement.
+ * Instances stables (arrow properties) pour ne jamais casser l'abonnement.
+ */
+export class Tracker {
+  private hooks = new Map<string, string[]>();
+  private buffer: { kind: string; value: unknown }[] = [];
+  private listeners = new Set<() => void>();
+  private version = 0;
+  private scheduled = false;
+
+  /** Appelé PENDANT le rendu du composant sandbox (effet de bord bénin :
+   *  ni setState React, ni DOM — juste un échantillon + notification). */
+  push(kind: string, value: unknown): void {
+    this.buffer.push({ kind, value });
+    this.scheduleCommit();
+  }
+
+  /** Nouvelle passe de rendu (setter appelé, ré-exécution) : la passe en
+   *  cours est commitée immédiatement, la suivante repart des index 0. */
+  beginRender(): void {
+    this.commitNow();
+  }
+
+  reset(): void {
+    this.hooks.clear();
+    this.buffer = [];
+    this.version++;
+    this.emit();
+  }
+
+  /** Commit synchrone — exposé pour les tests (déterministe, sans timer). */
+  flush(): void {
+    this.commitNow();
+  }
+
+  snapshot(): HookTrace[] {
+    return [...this.hooks.entries()].map(([name, values]) => ({ name, values }));
+  }
+
+  get isEmpty(): boolean {
+    return this.hooks.size === 0;
+  }
+
+  subscribe = (listener: () => void): (() => void) => {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  };
+
+  getSnapshot = (): number => this.version;
+
+  private scheduleCommit(): void {
+    if (this.scheduled) return;
+    this.scheduled = true;
+    setTimeout(() => {
+      this.scheduled = false;
+      this.commitNow();
+    }, 0);
+  }
+
+  private commitNow(): void {
+    if (this.buffer.length === 0) return;
+    const seq = this.buffer;
+    this.buffer = [];
+
+    // Re-passe identique (StrictMode) : la séquence d'une passe de rendu
+    // suit exactement celle de la précédente → enregistrer une seule fois.
+    const half = seq.length / 2;
+    const isRedite =
+      Number.isInteger(half) &&
+      seq.slice(0, half).every((s, i) => s.kind === seq[half + i].kind && s.value === seq[half + i].value);
+    const finalSeq = isRedite ? seq.slice(0, half) : seq;
+
+    const counters = new Map<string, number>();
+    let changed = false;
+    for (const { kind, value } of finalSeq) {
+      const index = counters.get(kind) ?? 0;
+      counters.set(kind, index + 1);
+      const name = `${kind}[${index}]`;
+      const rendered = formatValue(value);
+      const list = this.hooks.get(name);
+      if (!list) {
+        this.hooks.set(name, [rendered]);
+        changed = true;
+      } else if (list[list.length - 1] !== rendered) {
+        list.push(rendered);
+        changed = true;
       }
-    })
-    .join(" ");
+    }
+    if (changed) {
+      this.version++;
+      this.emit();
+    }
+  }
+
+  private emit(): void {
+    this.listeners.forEach((l) => l());
+  }
+}
+
+/** Un objet « react-like » porte les hooks (React, ReactScope…). */
+function isReactLike(value: unknown): value is Record<string, unknown> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as Record<string, unknown>).useState === "function"
+  );
+}
+
+/** Enrobe un déclencheur de re-rendu (setState, dispatch…) : la passe de
+ *  rendu qui suit repart des index 0 — les hooks re-rendus prolongent leur
+ *  historique au lieu d'être confondus avec de nouveaux hooks. */
+function tracedSetter(tracker: Tracker, setter: Function): Function {
+  return (...args: unknown[]) => {
+    tracker.beginRender();
+    return setter(...args);
+  };
+}
+
+/**
+ * Instrumente un objet react-like : chaque hook use*** appelé par le code
+ * du banc échantillonne sa valeur dans le tracker — le reste (lazy,
+ * Suspense…) est copié tel quel.
+ */
+function instrumentedReact(
+  react: Record<string, unknown>,
+  tracker: Tracker,
+): Record<string, unknown> {
+  const hooks: Record<string, unknown> = { ...react };
+
+  hooks.useState = (initial: unknown) => {
+    const pair = (react.useState as (i: unknown) => [unknown, (v: unknown) => void])(initial);
+    tracker.push("useState", pair[0]);
+    return [pair[0], tracedSetter(tracker, pair[1])];
+  };
+
+  hooks.useReducer = (reducer: unknown, init: unknown) => {
+    const triple = (react.useReducer as (r: unknown, i: unknown) => [unknown, unknown])(reducer, init);
+    tracker.push("useReducer", triple[0]);
+    return [triple[0], tracedSetter(tracker, triple[1] as Function)];
+  };
+
+  hooks.useMemo = (factory: unknown, deps: unknown) => {
+    const value = (react.useMemo as (f: unknown, d: unknown) => unknown)(factory, deps);
+    tracker.push("useMemo", value);
+    return value;
+  };
+
+  hooks.useCallback = (fn: unknown, deps: unknown) => {
+    const value = (react.useCallback as (f: unknown, d: unknown) => unknown)(fn, deps);
+    tracker.push("useCallback", "[fn]");
+    return value;
+  };
+
+  hooks.useRef = (initial: unknown) => {
+    const ref = (react.useRef as (i: unknown) => { current: unknown })(initial);
+    tracker.push("useRef", ref.current);
+    return ref;
+  };
+
+  hooks.useEffect = (fn: unknown, deps: unknown) => {
+    const result = (react.useEffect as (f: unknown, d: unknown) => void)(fn, deps);
+    tracker.push("useEffect", deps ?? "[aucune dép]");
+    return result;
+  };
+
+  hooks.useContext = (ctx: unknown) => {
+    const value = (react.useContext as (c: unknown) => unknown)(ctx);
+    tracker.push("useContext", value);
+    return value;
+  };
+
+  hooks.useDeferredValue = (value: unknown) => {
+    const deferred = (react.useDeferredValue as (v: unknown) => unknown)(value);
+    tracker.push("useDeferredValue", deferred);
+    return deferred;
+  };
+
+  hooks.useTransition = () => {
+    const pair = (react.useTransition as () => [boolean, (fn: () => void) => void])();
+    tracker.push("useTransition", `isPending:${String(pair[0])}`);
+    return [pair[0], tracedSetter(tracker, pair[1])];
+  };
+
+  hooks.useOptimistic = (value: unknown) => {
+    const pair = (react.useOptimistic as (v: unknown) => [unknown, unknown])(value);
+    tracker.push("useOptimistic", pair[0]);
+    return [pair[0], tracedSetter(tracker, pair[1] as Function)];
+  };
+
+  hooks.useActionState = (action: unknown, initial: unknown) => {
+    const triple = (react.useActionState as (a: unknown, i: unknown) => [unknown, unknown, boolean])(action, initial);
+    tracker.push("useActionState", triple[0]);
+    return [triple[0], tracedSetter(tracker, triple[1] as Function), triple[2]];
+  };
+
+  hooks.use = (input: unknown) => {
+    const value = (react.use as (i: unknown) => unknown)(input);
+    tracker.push("use", value);
+    return value;
+  };
+
+  return hooks;
+}
+
+/** Remplace, dans un scope de banc, chaque objet react-like (React,
+ *  ReactScope…) par sa version instrumentée. Les composants (Button…) et
+ *  les utilitaires (cn…) passent tels quels. */
+export function instrumentScope(
+  scope: Record<string, unknown>,
+  tracker: Tracker,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(scope)) {
+    out[key] = isReactLike(value) ? instrumentedReact(value, tracker) : value;
+  }
+  return out;
 }
 
 // ——— Exécution du code utilisateur ———
+
+/** Panneau « État des hooks » : la valeur de chaque hook use*** à chaque
+ *  rendu, et son historique (les valeurs successives, dédupliquées).
+ *  Re-rend via useSyncExternalStore à chaque échantillon du Tracker.
+ *  Exposé pour les tests. */
+export function HookMonitor({ tracker }: { tracker: Tracker }) {
+  const traces = useSyncExternalStore(tracker.subscribe, tracker.getSnapshot, () => -1);
+  void traces; // le numéro de version ne sert qu'à déclencher le re-rendu
+  const hooks = tracker.snapshot();
+
+  if (hooks.length === 0) {
+    return (
+      <div className="border-t border-border px-3 py-2 text-xs text-muted-foreground">
+        État des hooks{" "}
+        <span aria-hidden>·</span> aucun hook use*** exécuté
+      </div>
+    );
+  }
+
+  return (
+    <div className="border-t border-border px-3 py-2">
+      <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        État des hooks — la valeur à chaque rendu
+      </div>
+      <ul className="mt-1.5 space-y-1.5">
+        {hooks.map((hook) => {
+          const current = hook.values[hook.values.length - 1];
+          const history = hook.values.slice(0, -1);
+          return (
+            <li key={hook.name} className="text-xs leading-snug">
+              <span className="font-mono text-muted-foreground">{hook.name}</span>{" "}
+              <span className="font-medium">{current}</span>
+              {history.length > 0 && (
+                <span className="mt-0.5 block truncate font-mono text-[10px] text-muted-foreground/70">
+                  {history.join(" → ")} →
+                </span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
 
 class BenchErrorBoundary extends Component<
   { children: ReactNode; onError: (message: string) => void },
@@ -204,12 +505,14 @@ function RenderedView({
   code,
   data,
   scope,
+  tracker,
   onLog,
   onError,
 }: {
   code: string;
   data: string;
   scope: Record<string, unknown>;
+  tracker: Tracker;
   onLog: (type: "log" | "warn" | "error", args: unknown[]) => void;
   onError: (message: string) => void;
 }) {
@@ -218,7 +521,7 @@ function RenderedView({
   useEffect(() => {
     try {
       const parsedData = data.trim() === "" ? {} : JSON.parse(data);
-      const rendered = evaluate(code, scope, parsedData, onLog);
+      const rendered = evaluate(code, scope, parsedData, tracker, onLog);
       setResult(rendered);
     } catch (err) {
       onError(err instanceof Error ? err.message : String(err));
@@ -251,6 +554,7 @@ function evaluate(
   code: string,
   scope: Record<string, unknown>,
   data: unknown,
+  tracker: Tracker,
   onLog: (type: "log" | "warn" | "error", args: unknown[]) => void,
 ): ReactNode {
   // Sucrase : JSX → React.createElement, TS transpilé
@@ -271,6 +575,11 @@ function evaluate(
 
   const keys = Object.keys(scope).filter((k) => k !== "React");
 
+  // React (et tout objet react-like du scope) est remplacé par la version
+  // instrumentée : chaque hook use*** appelé par le code échantillonne sa
+  // valeur dans le tracker — « l'état des données à chaque moment ».
+  const tracedScope = instrumentScope(scope, tracker);
+
   // La zone « Données (JSON) » du panneau alimente un paramètre `data`.
   // Conflit : les exemples qui déclarent leur PROPRRE variable
   // (`const data = […]`) redeclarent le paramètre → SyntaxError.
@@ -280,14 +589,14 @@ function evaluate(
 
   const params = ["React", ...dataParams, "console", ...keys];
   const args: unknown[] = [
-    scope.React,
+    tracedScope.React,
     ...(declaresOwnData ? [] : [data]),
     {
       log: (...a: unknown[]) => onLog("log", a),
       warn: (...a: unknown[]) => onLog("warn", a),
       error: (...a: unknown[]) => onLog("error", a),
     },
-    ...keys.map((k) => scope[k]),
+    ...keys.map((k) => tracedScope[k]),
   ];
 
   // eslint-disable-next-line no-new-func

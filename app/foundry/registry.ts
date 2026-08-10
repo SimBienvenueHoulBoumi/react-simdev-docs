@@ -102,6 +102,7 @@ import { TransitionNotion } from "./entries/notion-transition";
 import { ActionStateNotion } from "./entries/notion-action-state";
 import { UseFnNotion } from "./entries/notion-use-fn";
 import { VirtualizationNotion } from "./entries/notion-virtualization";
+import { HooksNotion } from "./entries/notion-hooks";
 import { UrlFiltersRecipe } from "./entries/recipe-url-filters";
 import { ApiErrorRecipe } from "./entries/recipe-api-error";
 
@@ -143,6 +144,7 @@ export const entries: Entry[] = [
   ActionStateNotion,
   UseFnNotion,
   VirtualizationNotion,
+  HooksNotion,
   UrlFiltersRecipe,
   ApiErrorRecipe,
 ];
