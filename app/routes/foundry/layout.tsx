@@ -37,10 +37,15 @@ export default function FoundryLayout() {
   const [toc, setToc] = useState<TocItem[]>([]);
   const location = useLocation();
 
-  // Fermer tiroir + vider TOC à chaque navigation (évite les résidus)
+  // Fermer le tiroir à chaque navigation.
+  //
+  // Ne PAS vider le sommaire ici : les effets enfants s'exécutent AVANT ceux du
+  // parent, donc ce `setToc([])` effaçait systématiquement les ancres que la
+  // fiche venait de poser — le sommaire naissait toujours vide. La fiche est
+  // seule propriétaire de cet état : elle le remplit au montage et le vide à son
+  // démontage (routes/foundry/$slug.tsx). Deux propriétaires, c'était le bug.
   useEffect(() => {
     setDrawerOpen(false);
-    setToc([]);
   }, [location.pathname]);
 
   const activeSlug = location.pathname.split("/")[2] ?? "";
@@ -95,6 +100,25 @@ export default function FoundryLayout() {
 
         <main className="min-w-0 py-8">
           <div className="mx-auto w-full max-w-[48rem]">
+            {/* Sous 1280 px la colonne de droite n'existe pas (la place manque :
+                nav 17rem + sommaire 14rem laisseraient ~450 px au contenu). Le
+                sommaire reste malgré tout accessible ici, replié en tête de
+                fiche — sinon les ancres de la page active sont introuvables sur
+                un écran de portable. `display:none` sort le doublon de l'arbre
+                d'accessibilité : un seul sommaire est exposé à la fois. */}
+            {toc.length > 0 && (
+              <details className="mb-6 rounded-lg border border-border xl:hidden">
+                <summary className="cursor-pointer select-none px-4 py-2.5 text-sm font-medium hover:bg-accent/50">
+                  Sur cette page
+                  <span className="ml-2 text-xs font-normal text-muted-foreground">
+                    {toc.length} sections
+                  </span>
+                </summary>
+                <div className="border-t border-border p-2">
+                  <TableOfContents items={toc} />
+                </div>
+              </details>
+            )}
             <Outlet context={context} />
           </div>
         </main>

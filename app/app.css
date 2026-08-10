@@ -91,6 +91,15 @@
   ::selection {
     @apply bg-primary text-primary-foreground;
   }
+
+  /* Ancres : l'en-tête est collant (h-12 = 48px). Sans marge de défilement,
+     un clic dans le sommaire amène le titre visé à y=0 — donc DERRIÈRE
+     l'en-tête, invisible. On arrête le défilement en dessous, avec de l'air.
+     Couvre les titres à id et les ancres déclarées via data-toc. */
+  :is(h1, h2, h3, h4)[id],
+  [data-toc][id] {
+    scroll-margin-top: 5rem;
+  }
 }
 
 /* Scrollbar discrète pour les panneaux de code */
