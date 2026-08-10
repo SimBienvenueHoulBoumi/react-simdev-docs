@@ -5,3 +5,6 @@
 # React Router
 /.react-router/
 /build/
+
+# Maquettes de brainstorming (companion visuel)
+/.superpowers/
