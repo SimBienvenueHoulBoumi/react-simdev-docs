@@ -10,6 +10,8 @@ import { SearchModal } from "~/components/layout/search-modal";
 import { EngineToggle } from "~/components/layout/engine-toggle";
 import { TableOfContents, type TocItem } from "~/components/layout/table-of-contents";
 import { ThemeToggle } from "~/components/layout/theme-toggle";
+import { entryBySlug } from "~/foundry/registry";
+import { sectionsFromDoc } from "~/foundry/toc-sections";
 
 export interface FoundryOutletContext {
   setToc: (items: TocItem[]) => void;
@@ -49,6 +51,17 @@ export default function FoundryLayout() {
   }, [location.pathname]);
 
   const activeSlug = location.pathname.split("/")[2] ?? "";
+
+  // Sommaire disponible DÈS LE SSR : les sections sont lues dans l'arbre du Doc
+  // de la fiche, pendant le rendu — pas après hydratation. Le scan DOM vivant
+  // (routes/foundry/$slug.tsx) prend le relais dès qu'il a des ancres, car lui
+  // seul voit celles qui apparaissent à l'exécution (expériences du banc).
+  const sommaireStatique = useMemo<TocItem[]>(() => {
+    const entry = entryBySlug.get(activeSlug);
+    return entry ? sectionsFromDoc(entry.Doc) : [];
+  }, [activeSlug]);
+
+  const items = toc.length > 0 ? toc : sommaireStatique;
 
   const context = useMemo<FoundryOutletContext>(() => ({ setToc }), []);
 
@@ -106,16 +119,16 @@ export default function FoundryLayout() {
                 fiche — sinon les ancres de la page active sont introuvables sur
                 un écran de portable. `display:none` sort le doublon de l'arbre
                 d'accessibilité : un seul sommaire est exposé à la fois. */}
-            {toc.length > 0 && (
+            {items.length > 0 && (
               <details className="mb-6 rounded-lg border border-border xl:hidden">
                 <summary className="cursor-pointer select-none px-4 py-2.5 text-sm font-medium hover:bg-accent/50">
                   Sur cette page
                   <span className="ml-2 text-xs font-normal text-muted-foreground">
-                    {toc.length} sections
+                    {items.length} sections
                   </span>
                 </summary>
                 <div className="border-t border-border p-2">
-                  <TableOfContents items={toc} />
+                  <TableOfContents items={items} />
                 </div>
               </details>
             )}
@@ -125,7 +138,7 @@ export default function FoundryLayout() {
 
         {/* Sommaire — alimenté par la fiche via setToc (client, après montage) */}
         <aside className="sticky top-16 hidden max-h-[calc(100dvh-5rem)] self-start overflow-y-auto pb-8 xl:block">
-          {toc.length > 0 && <TableOfContents items={toc} />}
+          {items.length > 0 && <TableOfContents items={items} />}
         </aside>
       </div>
 
