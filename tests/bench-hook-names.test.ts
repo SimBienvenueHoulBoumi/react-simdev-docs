@@ -18,6 +18,12 @@ describe("extractHookNames — formes canoniques", () => {
     expect(naming.setters.get("useReducer")).toEqual(["dispatch"]);
   });
 
+  it("relève l'état et le démarreur d'un useTransition", () => {
+    const naming = extractHookNames(`const [pending, start] = useTransition();`);
+    expect(naming.values.get("useTransition")).toEqual(["pending"]);
+    expect(naming.setters.get("useTransition")).toEqual(["start"]);
+  });
+
   it("relève les affectations simples (useMemo, useRef, useContext)", () => {
     const naming = extractHookNames(`
       const square = useMemo(() => n * n, [n]);

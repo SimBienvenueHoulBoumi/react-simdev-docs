@@ -87,6 +87,8 @@ export default function BenchPanel({
   /** Instantané du code au moment du dernier run — sert à détecter « modifié ». */
   const [ranWith, setRanWith] = useState<{ code: string; data: string } | null>(null);
   const [tab, setTab] = useState<"hooks" | "console">("hooks");
+  /** Repli du plein écran : l'API native refusée → la scène passe en `fixed inset-0`. */
+  const [forcedFullscreen, setForcedFullscreen] = useState(false);
 
   const codeRef = useRef<HTMLTextAreaElement>(null);
   const gutterRef = useRef<HTMLDivElement>(null);
@@ -125,6 +127,37 @@ export default function BenchPanel({
     setExecution(null);
   };
 
+  // ⤢ Plein écran avec repli (spec §4.1) : l'API native quand elle accepte,
+  // sinon une classe fixed inset-0 z-50 sur le conteneur du banc. Dans le
+  // repli, le bouton devient un toggle — re-cliquer en sort.
+  const toggleFullscreen = useCallback(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    // Déjà en plein écran natif : on sort — le prochain clic retentera l'API.
+    if (document.fullscreenElement) {
+      void document.exitFullscreen?.();
+      return;
+    }
+    // En repli forcé : re-cliquer SORT du plein écran de secours.
+    if (forcedFullscreen) {
+      setForcedFullscreen(false);
+      return;
+    }
+    try {
+      if (typeof el.requestFullscreen !== "function") {
+        throw new Error("Plein écran non supporté");
+      }
+      const promise = el.requestFullscreen();
+      // L'API peut REFUSER a posteriori (permission, geste, embarquement) :
+      // la promesse rejette → repli sur la classe.
+      if (promise && typeof promise.catch === "function") {
+        promise.catch(() => setForcedFullscreen(true));
+      }
+    } catch {
+      setForcedFullscreen(true);
+    }
+  }, [forcedFullscreen]);
+
   const errorCount = logs.filter((l) => l.type === "error").length;
 
   // Une erreur doit se voir : rester sur un tracé de hooks muet pendant que la
@@ -144,7 +177,13 @@ export default function BenchPanel({
   const dataState = useMemo(() => checkJson(dataValue), [dataValue]);
 
   return (
-    <div ref={rootRef} className="flex flex-col bg-background">
+    <div
+      ref={rootRef}
+      className={cn(
+        "flex flex-col bg-background",
+        forcedFullscreen && "fixed inset-0 z-50 overflow-auto",
+      )}
+    >
       <Toolbar
         experiments={experiments}
         activeId={activeId}
@@ -152,7 +191,8 @@ export default function BenchPanel({
         status={status}
         onRun={run}
         onReset={reset}
-        rootRef={rootRef}
+        forcedFullscreen={forcedFullscreen}
+        onToggleFullscreen={toggleFullscreen}
       />
 
       {thesis && (
@@ -300,7 +340,8 @@ function Toolbar({
   status,
   onRun,
   onReset,
-  rootRef,
+  forcedFullscreen,
+  onToggleFullscreen,
 }: {
   experiments?: BenchExperiment[];
   activeId?: string;
@@ -308,15 +349,9 @@ function Toolbar({
   status: RunStatus;
   onRun: () => void;
   onReset: () => void;
-  rootRef: React.RefObject<HTMLDivElement | null>;
+  forcedFullscreen: boolean;
+  onToggleFullscreen: () => void;
 }) {
-  const toggleFullscreen = () => {
-    const el = rootRef.current;
-    if (!el) return;
-    if (document.fullscreenElement) void document.exitFullscreen?.();
-    else void el.requestFullscreen?.();
-  };
-
   return (
     <div className="flex flex-wrap items-center gap-2 border-t border-border bg-muted/40 px-3 py-2">
       {experiments && experiments.length > 0 && (
@@ -363,9 +398,10 @@ function Toolbar({
           Réinit.
         </button>
         <button
-          onClick={toggleFullscreen}
+          onClick={onToggleFullscreen}
           aria-label="Basculer le banc en plein écran"
-          title="Plein écran"
+          aria-pressed={forcedFullscreen}
+          title={forcedFullscreen ? "Quitter le plein écran" : "Plein écran"}
           className="rounded-md border border-border bg-background px-2 py-1 text-xs hover:bg-accent"
         >
           ⤢

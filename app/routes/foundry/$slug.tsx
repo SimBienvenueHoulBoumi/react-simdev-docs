@@ -7,6 +7,7 @@ import { Link, useOutletContext, useParams } from "react-router";
 import { entryBySlug, entries, FAMILY_LABELS, LEVEL_LABELS } from "~/foundry/registry";
 import { Badge } from "~/components/ui/badge";
 import type { TocItem } from "~/components/layout/table-of-contents";
+import { watchToc } from "~/components/layout/toc-scan";
 import type { FoundryOutletContext } from "./layout";
 
 export function meta({ params }: { params: { slug?: string } }) {
@@ -27,7 +28,7 @@ export default function FoundryEntryPage() {
 
   // Sommaire VIVANT : la fiche expose ses h2/h3 (id="..." attendu) et, pour ce
   // qui n'est pas un titre, tout élément portant `data-toc` + `id` — par exemple
-  // les onglets d'expériences du banc.
+  // les onglets d'expériences du banc (spec §6, logique dans toc-scan.ts).
   //
   // Pourquoi un MutationObserver et non un scan unique : le banc est replié par
   // défaut ET chargé paresseusement, donc ses ancres n'existent pas au montage.
@@ -37,43 +38,9 @@ export default function FoundryEntryPage() {
     const main = document.querySelector("main");
     if (!main) return;
 
-    let frame = 0;
-    let signature = "";
-
-    const scan = () => {
-      const nodes = Array.from(
-        main.querySelectorAll<HTMLElement>("h2[id], h3[id], [data-toc][id]"),
-      );
-      const items: TocItem[] = nodes.map((el) => ({
-        id: el.id,
-        label: el.dataset.toc ?? el.textContent ?? "",
-        level: el.dataset.toc ? 3 : el.tagName === "H2" ? 2 : 3,
-      }));
-
-      // Garde-fou obligatoire : setToc → re-rendu → mutation → setToc…
-      // Sans cette comparaison, la boucle ne s'arrête jamais.
-      const next = items.map((i) => `${i.level}|${i.id}|${i.label}`).join("\n");
-      if (next === signature) return;
-      signature = next;
-      setToc(items);
-    };
-
-    scan();
-    const observer = new MutationObserver(() => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(scan);
-    });
-    observer.observe(main, {
-      childList: true,
-      subtree: true,
-      characterData: true,
-      attributes: true,
-      attributeFilter: ["id", "data-toc"],
-    });
-
+    const detach = watchToc(main, setToc);
     return () => {
-      observer.disconnect();
-      cancelAnimationFrame(frame);
+      detach();
       setToc([]);
     };
   }, [entry, setToc]);

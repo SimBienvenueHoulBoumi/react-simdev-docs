@@ -14,6 +14,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import * as React from "react";
 import { cn } from "~/lib/cn";
+import { Spinner } from "~/components/ui/tw/spinner";
 import type { BenchExperiment } from "./bench-panel";
 
 export type { BenchExperiment };
@@ -89,8 +90,9 @@ export function Bench({ code, data, scope, experiments }: BenchProps) {
       {open && (
         <Suspense
           fallback={
-            <div className="flex items-center justify-center p-6 text-sm text-muted-foreground">
-              Chargement du banc d'essai…
+            <div className="flex items-center justify-center p-6">
+              {/* Une seule annonce : le label du role=status porte le message */}
+              <Spinner size={20} label="Chargement du banc d'essai…" />
             </div>
           }
         >
