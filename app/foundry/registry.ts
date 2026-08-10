@@ -88,6 +88,20 @@ import { LiftingNotion } from "./entries/notion-lifting";
 import { PolymorphismNotion } from "./entries/notion-polymorphism";
 import { CustomHooksNotion } from "./entries/notion-custom-hooks";
 import { ContextNotion } from "./entries/notion-context";
+import { EventsNotion } from "./entries/notion-events";
+import { ConditionalNotion } from "./entries/notion-conditional";
+import { MemoNotion } from "./entries/notion-memo";
+import { RefNotion } from "./entries/notion-ref";
+import { ChildrenNotion } from "./entries/notion-children";
+import { ErrorBoundaryNotion } from "./entries/notion-error-boundary";
+import { PortalNotion } from "./entries/notion-portal";
+import { ReducerNotion } from "./entries/notion-reducer";
+import { CompoundNotion } from "./entries/notion-compound";
+import { SuspenseNotion } from "./entries/notion-suspense";
+import { TransitionNotion } from "./entries/notion-transition";
+import { ActionStateNotion } from "./entries/notion-action-state";
+import { UseFnNotion } from "./entries/notion-use-fn";
+import { VirtualizationNotion } from "./entries/notion-virtualization";
 import { UrlFiltersRecipe } from "./entries/recipe-url-filters";
 import { ApiErrorRecipe } from "./entries/recipe-api-error";
 
@@ -115,6 +129,20 @@ export const entries: Entry[] = [
   PolymorphismNotion,
   CustomHooksNotion,
   ContextNotion,
+  EventsNotion,
+  ConditionalNotion,
+  MemoNotion,
+  RefNotion,
+  ChildrenNotion,
+  ErrorBoundaryNotion,
+  PortalNotion,
+  ReducerNotion,
+  CompoundNotion,
+  SuspenseNotion,
+  TransitionNotion,
+  ActionStateNotion,
+  UseFnNotion,
+  VirtualizationNotion,
   UrlFiltersRecipe,
   ApiErrorRecipe,
 ];
