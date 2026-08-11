@@ -129,7 +129,7 @@ export function SearchModal({ open, onOpenChange, ref }: SearchModalProps) {
             onKeyDown={onKeyDown}
             placeholder="Rechercher un composant, une intention, une erreur…"
             aria-label="Recherche"
-            className="h-11 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            className="h-11 w-full bg-transparent text-sm outline-none focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-muted-foreground"
           />
           <kbd className="shrink-0 rounded border border-border bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
             Échap
